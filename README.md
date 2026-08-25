@@ -26,8 +26,8 @@ doing what, where.
 |---|---|---|
 | Claude Code | ✅ real | reads `~/.claude/projects/**/*.jsonl` session files |
 | Codex CLI | ✅ real | reads `~/.codex/sessions/**/*.jsonl` rollouts |
-| ChatGPT app (Chat / Codex tasks) | ✅ best-effort | reads local conversation + Codex task stores |
-| Cursor | ✅ best-effort | reads workspace `state.vscdb` (read-only SQLite) |
+| ChatGPT app | 🟡 running-state | local conversation store is encrypted — titles on the roadmap |
+| Cursor | ✅ real | reads `conversation-search.db` (read-only, immutable SQLite) |
 | Claude Desktop | 🟡 running-state | app running indicator + open |
 | Hermes | 🟡 running-state | app running indicator + open |
 | Grok Bot | 🟡 running-state | app running indicator + open |

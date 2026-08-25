@@ -6,26 +6,25 @@ import Foundation
 ///
 /// Rules (see AGENTS.md): read-only on other apps' data, parse defensively,
 /// return [] rather than throwing, degrade to running-state when unreadable.
-protocol AgentSource {
+protocol AgentSource: Sendable {
     var info: AgentAppInfo { get }
     /// Whether the agent app (or its sessions) is currently live.
-    var isRunning: Bool { get }
+    /// `runningBundleIDs` is captured on the main thread each tick so this
+    /// can run on any executor without touching NSWorkspace.
+    func isRunning(runningBundleIDs: Set<String>) -> Bool
     /// Current threads, newest first. Called off the main thread every tick.
     func fetchThreads() -> [AgentThread]
 }
 
 extension AgentSource {
-    var isRunning: Bool {
-        let running = NSWorkspace.shared.runningApplications
-        return running.contains { app in
-            guard let id = app.bundleIdentifier else { return false }
-            return info.bundleIDs.contains(id)
-        }
+    func isRunning(runningBundleIDs: Set<String>) -> Bool {
+        !runningBundleIDs.isDisjoint(with: info.bundleIDs)
     }
 
-    func snapshot() -> AgentSnapshot {
+    func snapshot(runningBundleIDs: Set<String>) -> AgentSnapshot {
         let threads = fetchThreads()
-        return AgentSnapshot(info: info, isRunning: isRunning || !threads.isEmpty, threads: threads)
+        let running = isRunning(runningBundleIDs: runningBundleIDs) || !threads.isEmpty
+        return AgentSnapshot(info: info, isRunning: running, threads: threads)
     }
 
     /// Bring the agent app frontmost. `thread` lets adapters target a

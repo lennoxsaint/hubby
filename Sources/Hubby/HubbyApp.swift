@@ -65,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 final class PanelController: ObservableObject {
     @Published private(set) var isExpanded = false
     private weak var panel: FloatingPanel?
+    private var outsideClickMonitor: Any?
 
     func attach(panel: FloatingPanel) {
         self.panel = panel
@@ -73,6 +74,7 @@ final class PanelController: ObservableObject {
     func setExpanded(_ expanded: Bool) {
         guard let panel, expanded != isExpanded else { return }
         isExpanded = expanded
+        updateOutsideClickMonitor()
 
         let pad = HubbyMetrics.panelPadding * 2
         let size = expanded
@@ -86,6 +88,20 @@ final class PanelController: ObservableObject {
         frame = clampToScreen(frame)
         panel.setFrame(frame, display: true, animate: true)
         panel.savePosition()
+    }
+
+    /// Clicking anywhere in another app collapses the hub. Global monitors
+    /// only see events outside our own process, so clicks inside stay safe.
+    private func updateOutsideClickMonitor() {
+        if isExpanded {
+            outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                Task { @MainActor in self?.setExpanded(false) }
+            }
+        } else if let monitor = outsideClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            outsideClickMonitor = nil
+        }
     }
 
     private func clampToScreen(_ frame: NSRect) -> NSRect {
@@ -102,6 +118,9 @@ final class PanelController: ObservableObject {
 /// Space. Dragging the background moves it; position persists across launches.
 final class FloatingPanel: NSPanel {
     private static let positionKey = "HubbyPanelOrigin"
+    private static let snapMargin: CGFloat = 24
+    private static let snapInset: CGFloat = 8
+    private var snapWorkItem: DispatchWorkItem?
 
     init<Content: View>(content: Content) {
         let pad = HubbyMetrics.panelPadding * 2
@@ -124,13 +143,37 @@ final class FloatingPanel: NSPanel {
 
         contentView = NSHostingView(rootView: content)
         restorePosition()
+
+        // mouseUp is unreliable with a hosting view covering the panel, so
+        // watch didMove instead: it fires throughout a drag, and a short
+        // debounce means we snap + persist once the drag settles.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(didMove), name: NSWindow.didMoveNotification, object: self)
     }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    override func mouseUp(with event: NSEvent) {
-        super.mouseUp(with: event)
+    @objc private func didMove() {
+        snapWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in self?.snapToEdgeAndSave() }
+        snapWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: item)
+    }
+
+    /// Pull the panel flush to any screen edge it was dropped near, then
+    /// persist. Idempotent, so re-triggering via didMove converges.
+    private func snapToEdgeAndSave() {
+        guard let screen = screen ?? NSScreen.main else { savePosition(); return }
+        let visible = screen.visibleFrame
+        var f = frame
+        if f.minX - visible.minX < Self.snapMargin { f.origin.x = visible.minX + Self.snapInset }
+        if visible.maxX - f.maxX < Self.snapMargin { f.origin.x = visible.maxX - f.width - Self.snapInset }
+        if f.minY - visible.minY < Self.snapMargin { f.origin.y = visible.minY + Self.snapInset }
+        if visible.maxY - f.maxY < Self.snapMargin { f.origin.y = visible.maxY - f.height - Self.snapInset }
+        if f.origin != frame.origin {
+            setFrame(f, display: true, animate: true)
+        }
         savePosition()
     }
 

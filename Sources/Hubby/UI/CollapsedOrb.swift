@@ -23,6 +23,16 @@ struct CollapsedOrb: View {
             iconCluster
                 .padding(10)
 
+            if snapshots.count > 4 {
+                Text("+\(snapshots.count - 4)")
+                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(3)
+                    .background(Circle().fill(.black.opacity(0.45)))
+                    .offset(x: HubbyMetrics.orbDiameter / 2 - 10,
+                            y: HubbyMetrics.orbDiameter / 2 - 10)
+            }
+
             if totalActive > 0 {
                 Text("\(totalActive)")
                     .font(.system(size: 10, weight: .bold, design: .rounded))

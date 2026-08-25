@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Observable store the UI reads. Polls every source on a background queue
@@ -9,6 +10,8 @@ final class ThreadStore: ObservableObject {
     private let sources: [AgentSource]
     private let refreshInterval: TimeInterval
     private var timer: Timer?
+    /// Guards against a slow, stale refresh overwriting a newer one.
+    private var generation = 0
 
     init(sources: [AgentSource] = ThreadStore.defaultSources(), refreshInterval: TimeInterval = 5) {
         self.sources = sources
@@ -24,12 +27,22 @@ final class ThreadStore: ObservableObject {
         self.timer = timer
     }
 
+    deinit {
+        timer?.invalidate()
+    }
+
     func refresh() {
         let sources = self.sources
+        // NSWorkspace is main-thread territory; capture the running set here
+        // so the background snapshot pass never touches AppKit.
+        let runningIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        generation += 1
+        let tick = generation
         Task.detached(priority: .utility) {
-            let fresh = sources.map { $0.snapshot() }
+            let fresh = sources.map { $0.snapshot(runningBundleIDs: runningIDs) }
             await MainActor.run { [weak self] in
-                self?.snapshots = fresh
+                guard let self, self.generation == tick else { return }
+                self.snapshots = fresh
             }
         }
     }

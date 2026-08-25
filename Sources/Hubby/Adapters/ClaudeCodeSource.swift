@@ -20,7 +20,7 @@ struct ClaudeCodeSource: AgentSource {
     // Claude Code runs inside a terminal, so a running Terminal.app proves
     // nothing; liveness comes from recent session files (snapshot() ORs in
     // non-empty threads).
-    var isRunning: Bool { false }
+    func isRunning(runningBundleIDs: Set<String>) -> Bool { false }
 
     func fetchThreads() -> [AgentThread] {
         recentSessionFiles().compactMap { file in
@@ -54,20 +54,5 @@ struct ClaudeCodeSource: AgentSource {
             }
         }
         return files.sorted { $0.1 > $1.1 }.prefix(Self.maxThreads).map { $0 }
-    }
-}
-
-/// Shared small file helpers.
-enum FileReading {
-    /// First `bytes` of a file, or nil if unreadable.
-    static func head(of url: URL, bytes: Int) -> Data? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        return try? handle.read(upToCount: bytes)
-    }
-
-    static func abbreviate(_ path: String) -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 }
