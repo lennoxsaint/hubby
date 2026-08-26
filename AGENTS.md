@@ -7,9 +7,11 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
 ## Ground rules
 
 1. **Read-only on other apps' data. Always.** Adapters may read other apps'
-   session stores but must NEVER write to, lock, or migrate them. SQLite stores
-   are opened read-only (`mode=ro&immutable=1`) or from a temp copy. If a store
-   can't be read safely, degrade to running-state detection.
+   session stores but must NEVER write to, lock, or migrate them. Go through
+   `Core/SQLiteReader`: snapshot databases open `mode=ro&immutable=1`; live-WAL
+   databases (e.g. Codex's) open plain `mode=ro` — `immutable=1` on a live WAL
+   returns stale/corrupt reads — with a temp-copy fallback on open failure.
+   If a store can't be read safely, degrade to running-state detection.
 2. **Native only.** SwiftUI + AppKit. No Electron, no Tauri, no web views.
    Minimalism is the product.
 3. **Graceful degradation is a feature.** Every `AgentSource` must work when its

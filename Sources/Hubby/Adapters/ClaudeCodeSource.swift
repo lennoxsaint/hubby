@@ -10,12 +10,17 @@ struct ClaudeCodeSource: AgentSource {
     let info = AgentAppInfo(
         id: "claude-code", name: "Claude Code",
         bundleIDs: ["com.apple.Terminal"],
-        symbol: "terminal.fill", tintHex: 0xCC785C)
+        symbol: "terminal.fill", tintHex: 0xCC785C,
+        // A CLI has no icon of its own: real Claude icon + terminal badge.
+        iconBundleID: "com.anthropic.claudefordesktop",
+        badgeSymbol: "terminal.fill")
 
     /// Sessions untouched for longer than this are not worth showing.
     private static let maxAge: TimeInterval = 24 * 3600
     private static let maxThreads = 8
     private static let headBytes = 128 * 1024
+
+    var watchedPaths: [URL] { [projectsDir] }
 
     // Claude Code runs inside a terminal, so a running Terminal.app proves
     // nothing; liveness comes from recent session files (snapshot() ORs in

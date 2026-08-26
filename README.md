@@ -25,15 +25,19 @@ doing what, where.
 | App | Thread list | How |
 |---|---|---|
 | Claude Code | ✅ real | reads `~/.claude/projects/**/*.jsonl` session files |
-| Codex CLI | ✅ real | reads `~/.codex/sessions/**/*.jsonl` rollouts |
-| ChatGPT app | 🟡 running-state | local conversation store is encrypted — titles on the roadmap |
+| Codex (ChatGPT desktop + CLI) | ✅ real, live status | `~/.codex`: thread names from `session_index.jsonl`, rows from `state_N.sqlite`, generating-right-now from `thread_history_1.sqlite` |
 | Cursor | ✅ real | reads `conversation-search.db` (read-only, immutable SQLite) |
 | Claude Desktop | 🟡 running-state | app running indicator + open |
 | Hermes | 🟡 running-state | app running indicator + open |
 | Grok Bot | 🟡 running-state | app running indicator + open |
 
+The ChatGPT desktop app *is* the Codex app (bundle `com.openai.codex`), so
+they share one row. Thread renames propagate near-instantly via a single
+FSEvents watcher over the data directories.
+
 Everything is **local and read-only**: Hubby never writes to another app's data
-and never touches the network.
+and never touches the network. App icons are loaded at runtime from the apps
+installed on your Mac — no logos ship in this repo.
 
 ## Install / run
 

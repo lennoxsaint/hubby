@@ -6,31 +6,25 @@ struct CollapsedOrb: View {
     let snapshots: [AgentSnapshot]
     let totalActive: Int
 
-    /// The four most interesting apps: running first, then by thread count.
+    /// Fan shows the store's order (recency), frontmost = most recent.
     private var featured: [AgentSnapshot] {
-        Array(snapshots
-            .sorted {
-                ($0.isRunning ? 1 : 0, $0.threads.count) > ($1.isRunning ? 1 : 0, $1.threads.count)
-            }
-            .prefix(4))
+        Array(snapshots.prefix(Self.fanCount))
     }
+
+    private static let fanCount = 3
 
     var body: some View {
         ZStack {
-            Circle().fill(.ultraThinMaterial)
-            Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1)
+            iconFan
 
-            iconCluster
-                .padding(10)
-
-            if snapshots.count > 4 {
-                Text("+\(snapshots.count - 4)")
+            if snapshots.count > Self.fanCount {
+                Text("+\(snapshots.count - Self.fanCount)")
                     .font(.system(size: 8, weight: .bold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.85))
                     .padding(3)
                     .background(Circle().fill(.black.opacity(0.45)))
-                    .offset(x: HubbyMetrics.orbDiameter / 2 - 10,
-                            y: HubbyMetrics.orbDiameter / 2 - 10)
+                    .offset(x: HubbyMetrics.orbDiameter / 2 - 12,
+                            y: HubbyMetrics.orbDiameter / 2 - 12)
             }
 
             if totalActive > 0 {
@@ -45,20 +39,24 @@ struct CollapsedOrb: View {
             }
         }
         .frame(width: HubbyMetrics.orbDiameter, height: HubbyMetrics.orbDiameter)
+        // Shape-scoped material: `fill(.ultraThinMaterial)` leaves a square
+        // NSVisualEffectView backing behind the circle in a clear panel.
+        .background(.ultraThinMaterial, in: Circle())
+        .overlay(Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1))
         .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
     }
 
-    private var iconCluster: some View {
-        let columns = [GridItem(.flexible(), spacing: 2), GridItem(.flexible(), spacing: 2)]
-        return LazyVGrid(columns: columns, spacing: 2) {
-            ForEach(featured) { snapshot in
-                ZStack {
-                    Circle().fill(snapshot.info.tint.opacity(snapshot.isRunning ? 1 : 0.35))
-                    Image(systemName: snapshot.info.symbol)
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 16, height: 16)
+    /// A little 3D-ish deck of the most recently active apps' real icons.
+    private var iconFan: some View {
+        ZStack {
+            ForEach(Array(featured.enumerated().reversed()), id: \.element.id) { index, snapshot in
+                AppIconView(
+                    info: snapshot.info,
+                    size: 26,
+                    dimmed: !snapshot.isRunning && snapshot.threads.isEmpty)
+                .rotationEffect(.degrees(Double(index) * 9 - 9))
+                .offset(x: CGFloat(index) * 8 - 8, y: CGFloat(index) * 2 - 2)
+                .shadow(color: .black.opacity(0.25), radius: 1.5, y: 1)
             }
         }
     }

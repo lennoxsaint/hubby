@@ -9,10 +9,13 @@ struct AgentThread: Identifiable, Hashable {
     let subtitle: String?
     /// Working directory of the session, used for terminal-focused jumps.
     let cwd: String?
+    /// True when the source *knows* the thread is generating right now
+    /// (e.g. an in-progress Codex turn) — not just recently touched.
+    var isGenerating: Bool = false
 
-    /// Threads touched within the last 5 minutes count as active.
+    /// Explicitly generating, or touched within the last 2 minutes.
     func status(now: Date = Date()) -> ThreadStatus {
-        now.timeIntervalSince(lastActivity) < 300 ? .active : .idle
+        isGenerating || now.timeIntervalSince(lastActivity) < 120 ? .active : .idle
     }
 }
 
@@ -27,10 +30,16 @@ struct AgentAppInfo: Identifiable, Hashable {
     let name: String
     /// Bundle identifiers to try, in order, when activating the app.
     let bundleIDs: [String]
-    /// SF Symbol used for the app's dot in the orb and hub.
+    /// SF Symbol used when no real app icon is available.
     let symbol: String
     /// Hex RGB used as the app's accent color.
     let tintHex: UInt32
+    /// Bundle whose real icon to show, loaded at runtime from the installed
+    /// app (never bundled — trademarks stay on the user's disk).
+    var iconBundleID: String? = nil
+    /// Small corner-badge symbol layered on the icon (e.g. Claude Code's
+    /// terminal glyph over the Claude icon).
+    var badgeSymbol: String? = nil
 }
 
 /// A source's state at one refresh tick.

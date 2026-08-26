@@ -71,14 +71,29 @@ final class PanelController: ObservableObject {
         self.panel = panel
     }
 
+    /// Last natural height reported by the hub content; the panel hugs it.
+    private var hubContentHeight: CGFloat = 220
+
     func setExpanded(_ expanded: Bool) {
-        guard let panel, expanded != isExpanded else { return }
+        guard panel != nil, expanded != isExpanded else { return }
         isExpanded = expanded
         updateOutsideClickMonitor()
+        resizePanel()
+    }
 
+    /// Called from SwiftUI whenever the hub's natural height changes
+    /// (rows added, drop-down opened...). Resizes the panel to match.
+    func setContentHeight(_ height: CGFloat) {
+        guard height > 0, abs(height - hubContentHeight) > 0.5 else { return }
+        hubContentHeight = height
+        if isExpanded { resizePanel() }
+    }
+
+    private func resizePanel() {
+        guard let panel else { return }
         let pad = HubbyMetrics.panelPadding * 2
-        let size = expanded
-            ? CGSize(width: HubbyMetrics.hubSize.width + pad, height: HubbyMetrics.hubSize.height + pad)
+        let size = isExpanded
+            ? CGSize(width: HubbyMetrics.hubWidth + pad, height: hubContentHeight + pad)
             : CGSize(width: HubbyMetrics.orbDiameter + pad, height: HubbyMetrics.orbDiameter + pad)
 
         var frame = panel.frame
@@ -125,9 +140,11 @@ final class FloatingPanel: NSPanel {
     init<Content: View>(content: Content) {
         let pad = HubbyMetrics.panelPadding * 2
         let side = HubbyMetrics.orbDiameter + pad
+        // No .fullSizeContentView: on macOS 14+ it drags in the scene
+        // background / safe-area path that paints a gray square behind us.
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: side, height: side),
-            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false)
 
@@ -141,7 +158,11 @@ final class FloatingPanel: NSPanel {
         hidesOnDeactivate = false
         becomesKeyOnlyIfNeeded = true
 
-        contentView = NSHostingView(rootView: content)
+        let hosting = NSHostingView(rootView: content)
+        hosting.safeAreaRegions = [] // no scene-background square on 14+
+        hosting.wantsLayer = true
+        hosting.layer?.backgroundColor = NSColor.clear.cgColor
+        contentView = hosting
         restorePosition()
 
         // mouseUp is unreliable with a hosting view covering the panel, so

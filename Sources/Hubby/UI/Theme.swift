@@ -15,7 +15,9 @@ extension AgentAppInfo {
 
 enum HubbyMetrics {
     static let orbDiameter: CGFloat = 56
-    static let hubSize = CGSize(width: 330, height: 460)
+    static let hubWidth: CGFloat = 330
+    /// The scrollable rows area is capped; the hub itself hugs its content.
+    static let maxRowsHeight: CGFloat = 520
     static let cornerRadius: CGFloat = 24
     /// Panel is padded slightly beyond content for shadow breathing room.
     static let panelPadding: CGFloat = 8

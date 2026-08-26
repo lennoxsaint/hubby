@@ -1,13 +1,27 @@
 import SwiftUI
 
+/// Reports the hub's natural height so the panel can hug its content.
+struct HubHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// The expanded state: a frosted rounded square listing every agent app,
-/// each expandable into a drop-down of its live threads.
+/// each expandable into a drop-down of its live threads. Height is dynamic:
+/// the hub ends just below the last row, scrolling only past a cap.
 struct ExpandedHub: View {
     let snapshots: [AgentSnapshot]
     let onJump: (AgentSnapshot, AgentThread?) -> Void
     let onCollapse: () -> Void
 
     @State private var openApp: String?
+    @State private var rowsHeight: CGFloat = 0
+
+    private var scrollHeight: CGFloat {
+        min(rowsHeight, HubbyMetrics.maxRowsHeight)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,32 +42,49 @@ struct ExpandedHub: View {
                     }
                 }
                 .padding(8)
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(key: RowsHeightKey.self, value: proxy.size.height)
+                })
             }
+            .frame(height: max(scrollHeight, 44))
         }
-        .frame(width: HubbyMetrics.hubSize.width, height: HubbyMetrics.hubSize.height)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: HubbyMetrics.cornerRadius, style: .continuous))
+        .onPreferenceChange(RowsHeightKey.self) { rowsHeight = $0 }
+        .frame(width: HubbyMetrics.hubWidth)
+        // Shape-scoped material — a plain background+clipShape leaves a square
+        // NSVisualEffectView backing visible around the rounded corners.
+        .background(.ultraThinMaterial, in: RoundedRectangle(
+            cornerRadius: HubbyMetrics.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: HubbyMetrics.cornerRadius, style: .continuous)
                 .strokeBorder(.white.opacity(0.15), lineWidth: 1))
         .shadow(color: .black.opacity(0.3), radius: 16, y: 6)
+        .background(GeometryReader { proxy in
+            Color.clear.preference(key: HubHeightKey.self, value: proxy.size.height)
+        })
     }
 
+    /// The whole header collapses the hub — no dedicated button needed
+    /// (clicking outside the panel collapses it too).
     private var header: some View {
-        HStack {
-            Text("Hubby")
-                .font(.system(.headline, design: .rounded).weight(.bold))
-            Spacer()
-            Button(action: onCollapse) {
-                Image(systemName: "minus.circle.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
+        Button(action: onCollapse) {
+            HStack {
+                Text("Hubby")
+                    .font(.system(.headline, design: .rounded).weight(.bold))
+                Spacer()
             }
-            .buttonStyle(.plain)
-            .help("Collapse to orb")
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .buttonStyle(.plain)
+        .help("Collapse to orb")
+    }
+}
+
+private struct RowsHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
@@ -67,13 +98,10 @@ private struct AppRow: View {
         VStack(spacing: 0) {
             Button(action: onToggle) {
                 HStack(spacing: 10) {
-                    ZStack {
-                        Circle().fill(snapshot.info.tint.opacity(snapshot.isRunning ? 1 : 0.35))
-                        Image(systemName: snapshot.info.symbol)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                    .frame(width: 26, height: 26)
+                    AppIconView(
+                        info: snapshot.info,
+                        size: 26,
+                        dimmed: !snapshot.isRunning && snapshot.threads.isEmpty)
 
                     Text(snapshot.info.name)
                         .font(.system(.body, design: .rounded).weight(.medium))
@@ -147,9 +175,7 @@ struct ThreadRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 8) {
-                Circle()
-                    .fill(thread.status() == .active ? .green : Color.secondary.opacity(0.4))
-                    .frame(width: 6, height: 6)
+                statusDot
                 VStack(alignment: .leading, spacing: 1) {
                     Text(thread.title)
                         .font(.system(.callout, design: .rounded))
@@ -172,5 +198,31 @@ struct ThreadRow: View {
         }
         .buttonStyle(.plain)
         .help("Jump to this thread")
+    }
+
+    @ViewBuilder
+    private var statusDot: some View {
+        if thread.isGenerating {
+            PulsingDot()
+        } else {
+            Circle()
+                .fill(thread.status() == .active ? .green : Color.secondary.opacity(0.4))
+                .frame(width: 6, height: 6)
+        }
+    }
+}
+
+/// A gently pulsing green dot for threads that are generating right now.
+private struct PulsingDot: View {
+    @State private var pulsing = false
+
+    var body: some View {
+        Circle()
+            .fill(.green)
+            .frame(width: 6, height: 6)
+            .scaleEffect(pulsing ? 1.4 : 0.8)
+            .opacity(pulsing ? 0.6 : 1)
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulsing)
+            .onAppear { pulsing = true }
     }
 }

@@ -53,6 +53,46 @@ enum JSONLParsers {
         return nil
     }
 
+    // MARK: - Codex session index
+
+    /// One line of `~/.codex/session_index.jsonl`.
+    struct CodexIndexEntry {
+        let id: String
+        let name: String?
+        let updatedAt: Date?
+    }
+
+    /// Parse `session_index.jsonl` data (typically a tail read — a leading
+    /// partial line just fails JSON parsing and is skipped). Entries are
+    /// append-ordered, so for duplicate ids the LAST entry wins; collapse
+    /// with `Dictionary(..., uniquingKeysWith: { _, last in last })`.
+    static func codexSessionIndex(from data: Data) -> [CodexIndexEntry] {
+        jsonLines(in: data).compactMap { line in
+            guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                  let id = obj["id"] as? String, !id.isEmpty else { return nil }
+            let rawName = (obj["thread_name"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return CodexIndexEntry(
+                id: id,
+                name: (rawName?.isEmpty ?? true) ? nil : rawName.map { clean($0) },
+                updatedAt: (obj["updated_at"] as? String).flatMap(lenientISODate))
+        }
+    }
+
+    /// The index file contains garbage dates in the wild (`…:17.3NZ`,
+    /// epoch-2000 sentinels), so parse leniently and reject sentinels.
+    static func lenientISODate(_ string: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        guard let date = fractional.date(from: string) ?? plain.date(from: string) else {
+            return nil
+        }
+        // Anything at/before 2001 is a sentinel, not a real session time.
+        return date.timeIntervalSinceReferenceDate <= 0 ? nil : date
+    }
+
     // MARK: - Helpers
 
     private static func jsonLines(in data: Data) -> [Data] {
@@ -73,7 +113,7 @@ enum JSONLParsers {
         return nil
     }
 
-    private static func clean(_ raw: String, limit: Int = 60) -> String {
+    static func clean(_ raw: String, limit: Int = 60) -> String {
         let oneLine = raw
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)

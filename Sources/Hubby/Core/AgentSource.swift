@@ -14,9 +14,13 @@ protocol AgentSource: Sendable {
     func isRunning(runningBundleIDs: Set<String>) -> Bool
     /// Current threads, newest first. Called off the main thread every tick.
     func fetchThreads() -> [AgentThread]
+    /// Directories the FSEvents watcher monitors to refresh this source
+    /// the moment its app writes (renames, new turns...).
+    var watchedPaths: [URL] { get }
 }
 
 extension AgentSource {
+    var watchedPaths: [URL] { [] }
     func isRunning(runningBundleIDs: Set<String>) -> Bool {
         !runningBundleIDs.isDisjoint(with: info.bundleIDs)
     }
