@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// The resting state: a small circle showing the connected agent apps'
-/// icons and a badge with the count of active threads.
+/// The resting state's content: a little 3D-ish deck of the most recently
+/// active apps' icons plus badges. Chrome (material circle, border, shadow)
+/// is drawn by the shared MorphSurface so the shape morphs continuously.
 struct CollapsedOrb: View {
     let snapshots: [AgentSnapshot]
-    let totalActive: Int
+    let totalRunning: Int
+    let totalNeedsYou: Int
 
     /// Fan shows the store's order (recency), frontmost = most recent.
     private var featured: [AgentSnapshot] {
@@ -27,8 +29,8 @@ struct CollapsedOrb: View {
                             y: HubbyMetrics.orbDiameter / 2 - 12)
             }
 
-            if totalActive > 0 {
-                Text("\(totalActive)")
+            if totalRunning > 0 {
+                Text("\(totalRunning)")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5)
@@ -37,16 +39,23 @@ struct CollapsedOrb: View {
                     .offset(x: HubbyMetrics.orbDiameter / 2 - 10,
                             y: -HubbyMetrics.orbDiameter / 2 + 10)
             }
+
+            // "Never leave an agent hanging": amber badge when any agent is
+            // blocked waiting on the human.
+            if totalNeedsYou > 0 {
+                Text("\(totalNeedsYou)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(.orange))
+                    .offset(x: -HubbyMetrics.orbDiameter / 2 + 10,
+                            y: -HubbyMetrics.orbDiameter / 2 + 10)
+            }
         }
         .frame(width: HubbyMetrics.orbDiameter, height: HubbyMetrics.orbDiameter)
-        // Shape-scoped material: `fill(.ultraThinMaterial)` leaves a square
-        // NSVisualEffectView backing behind the circle in a clear panel.
-        .background(.ultraThinMaterial, in: Circle())
-        .overlay(Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1))
-        .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
     }
 
-    /// A little 3D-ish deck of the most recently active apps' real icons.
     private var iconFan: some View {
         ZStack {
             ForEach(Array(featured.enumerated().reversed()), id: \.element.id) { index, snapshot in

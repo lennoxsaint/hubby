@@ -62,19 +62,40 @@ final class CodexIndexTests: XCTestCase {
         XCTAssertEqual(merged[1].id, "t0")
     }
 
-    func testMergeZombieInProgressTurnsAreNotSpinners() {
-        // Crashed turns stay `inProgress` in thread_history for days; a
-        // thread with no recent activity must not pulse as generating.
-        let now = Date()
-        let fresh = Int64(now.addingTimeInterval(-60).timeIntervalSince1970 * 1000)
-        let stale = Int64(now.addingTimeInterval(-4 * 24 * 3600).timeIntervalSince1970 * 1000)
-        let rows = [
-            CodexDBRow(id: "live", title: "Fresh", cwd: nil, recencyMs: fresh),
-            CodexDBRow(id: "zombie", title: "Stale", cwd: nil, recencyMs: stale),
-        ]
-        let merged = CodexThreadMerge.merge(
-            dbRows: rows, index: [:], activeIDs: ["live", "zombie"], now: now)
-        XCTAssertTrue(merged.first { $0.id == "live" }?.isGenerating == true)
-        XCTAssertFalse(merged.first { $0.id == "zombie" }?.isGenerating == true)
+    func testMergeExplicitNameBeatsIndexAndTitle() {
+        let rows = [CodexDBRow(
+            id: "a", name: "Renamed In App", title: "first user msg", cwd: nil,
+            recencyMs: 1000, rolloutPath: nil)]
+        let index = ["a": JSONLParsers.CodexIndexEntry(id: "a", name: "Index Name", updatedAt: nil)]
+        let merged = CodexThreadMerge.merge(dbRows: rows, index: index, activeIDs: [])
+        XCTAssertEqual(merged.first?.title, "Renamed In App")
+    }
+}
+
+final class RolloutTailTests: XCTestCase {
+    private func rollout(_ events: [String]) -> Data {
+        Data(events.map {
+            #"{"timestamp":"2026-08-26T12:00:00.000Z","type":"event_msg","payload":{"type":"\#($0)"}}"#
+        }.joined(separator: "\n").utf8)
+    }
+
+    func testStartedAfterCompleteIsLive() {
+        XCTAssertTrue(RolloutTail.isLive(tail: rollout(
+            ["task_started", "task_complete", "task_started", "token_count"])))
+    }
+
+    func testCompleteAfterStartedIsIdle() {
+        XCTAssertFalse(RolloutTail.isLive(tail: rollout(
+            ["task_started", "token_count", "task_complete"])))
+    }
+
+    func testStartedWithNoCompleteIsLive() {
+        XCTAssertTrue(RolloutTail.isLive(tail: rollout(["session_meta", "task_started"])))
+    }
+
+    func testNoMarkersIsIdle() {
+        XCTAssertFalse(RolloutTail.isLive(tail: rollout(["session_meta", "token_count"])))
+        XCTAssertFalse(RolloutTail.isLive(tail: Data()))
+        XCTAssertFalse(RolloutTail.isLive(tail: Data("garbage not json".utf8)))
     }
 }

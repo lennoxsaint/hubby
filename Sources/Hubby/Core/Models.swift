@@ -10,16 +10,23 @@ struct AgentThread: Identifiable, Hashable {
     /// Working directory of the session, used for terminal-focused jumps.
     let cwd: String?
     /// True when the source *knows* the thread is generating right now
-    /// (e.g. an in-progress Codex turn) — not just recently touched.
+    /// (e.g. a live Codex rollout turn) — not just recently touched.
     var isGenerating: Bool = false
+    /// True when the source knows the agent is blocked waiting for the
+    /// human (Grok Bot's `awaitingUserResponse`).
+    var isWaitingOnYou: Bool = false
 
-    /// Explicitly generating, or touched within the last 2 minutes.
+    /// Spinner > needs-you > recently-touched > idle.
     func status(now: Date = Date()) -> ThreadStatus {
-        isGenerating || now.timeIntervalSince(lastActivity) < 120 ? .active : .idle
+        if isGenerating { return .generating }
+        if isWaitingOnYou { return .waitingOnYou }
+        return now.timeIntervalSince(lastActivity) < 120 ? .active : .idle
     }
 }
 
 enum ThreadStatus {
+    case generating
+    case waitingOnYou
     case active
     case idle
 }
@@ -49,5 +56,8 @@ struct AgentSnapshot: Identifiable {
     let threads: [AgentThread]
 
     var id: String { info.id }
-    var activeCount: Int { threads.filter { $0.status() == .active }.count }
+    /// Threads generating right now (spinners; drives the orb badge).
+    var runningCount: Int { threads.filter { $0.status() == .generating }.count }
+    /// Agents blocked waiting for the human (amber badge).
+    var needsYouCount: Int { threads.filter { $0.status() == .waitingOnYou }.count }
 }

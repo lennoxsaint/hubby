@@ -18,15 +18,20 @@ struct ExpandedHub: View {
 
     @State private var openApp: String?
     @State private var rowsHeight: CGFloat = 0
+    @State private var scrollOffset: CGFloat = 0
+    @State private var scrollerVisible = false
+    @State private var scrollerFadeTask: Task<Void, Never>?
 
     private var scrollHeight: CGFloat {
         min(rowsHeight, HubbyMetrics.maxRowsHeight)
     }
 
+    private var isScrollable: Bool { rowsHeight > HubbyMetrics.maxRowsHeight + 1 }
+
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().opacity(0.4)
+            Divider().opacity(0.4).padding(.horizontal, 14)
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(snapshots) { snapshot in
@@ -38,29 +43,70 @@ struct ExpandedHub: View {
                                     openApp = openApp == snapshot.id ? nil : snapshot.id
                                 }
                             },
+                            onHoverOpen: {
+                                withAnimation(.spring(duration: 0.3)) {
+                                    openApp = snapshot.id // accordion: siblings close
+                                }
+                            },
                             onJump: onJump)
                     }
                 }
                 .padding(8)
                 .background(GeometryReader { proxy in
-                    Color.clear.preference(key: RowsHeightKey.self, value: proxy.size.height)
+                    Color.clear
+                        .preference(key: RowsHeightKey.self, value: proxy.size.height)
+                        .preference(
+                            key: ScrollOffsetKey.self,
+                            value: -proxy.frame(in: .named("hubbyRows")).minY)
                 })
             }
+            .coordinateSpace(name: "hubbyRows")
+            // The NSScrollView backing paints an opaque window-background
+            // rectangle unless explicitly hidden — the "block" behind the hub.
+            .scrollContentBackground(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.hidden)
             .frame(height: max(scrollHeight, 44))
+            .overlay(alignment: .topTrailing) { scroller }
+            .onPreferenceChange(ScrollOffsetKey.self) { offset in
+                scrollOffset = offset
+                guard isScrollable else { return }
+                scrollerVisible = true
+                scrollerFadeTask?.cancel()
+                scrollerFadeTask = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(1.2))
+                    if !Task.isCancelled {
+                        withAnimation(.easeOut(duration: 0.4)) { scrollerVisible = false }
+                    }
+                }
+            }
         }
         .onPreferenceChange(RowsHeightKey.self) { rowsHeight = $0 }
         .frame(width: HubbyMetrics.hubWidth)
-        // Shape-scoped material — a plain background+clipShape leaves a square
-        // NSVisualEffectView backing visible around the rounded corners.
-        .background(.ultraThinMaterial, in: RoundedRectangle(
-            cornerRadius: HubbyMetrics.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: HubbyMetrics.cornerRadius, style: .continuous)
-                .strokeBorder(.white.opacity(0.15), lineWidth: 1))
-        .shadow(color: .black.opacity(0.3), radius: 16, y: 6)
+        // Chrome (material, border, shadow) lives in MorphSurface so orb and
+        // hub share one continuously morphing shape.
         .background(GeometryReader { proxy in
             Color.clear.preference(key: HubHeightKey.self, value: proxy.size.height)
         })
+    }
+
+    /// A minimal capsule thumb, drawn only while scrolling a capped list —
+    /// the system scroller's track would puncture the frosted material.
+    @ViewBuilder
+    private var scroller: some View {
+        if isScrollable {
+            let viewport = max(scrollHeight, 44)
+            let thumbHeight = max(viewport * viewport / rowsHeight, 24)
+            let travel = viewport - thumbHeight - 8
+            let progress = min(max(scrollOffset / (rowsHeight - viewport), 0), 1)
+            Capsule()
+                .fill(.white.opacity(0.25))
+                .frame(width: 3, height: thumbHeight)
+                .padding(.trailing, 3)
+                .offset(y: 4 + travel * progress)
+                .opacity(scrollerVisible ? 1 : 0)
+                .allowsHitTesting(false)
+        }
     }
 
     /// The whole header collapses the hub — no dedicated button needed
@@ -88,11 +134,21 @@ private struct RowsHeightKey: PreferenceKey {
     }
 }
 
+private struct ScrollOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct AppRow: View {
     let snapshot: AgentSnapshot
     let isOpen: Bool
     let onToggle: () -> Void
+    let onHoverOpen: () -> Void
     let onJump: (AgentSnapshot, AgentThread?) -> Void
+
+    @State private var hoverTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -106,10 +162,15 @@ private struct AppRow: View {
                     Text(snapshot.info.name)
                         .font(.system(.body, design: .rounded).weight(.medium))
 
-                    if snapshot.activeCount > 0 {
-                        Text("\(snapshot.activeCount) active")
+                    if snapshot.runningCount > 0 {
+                        Text("\(snapshot.runningCount) running")
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
                             .foregroundStyle(.green)
+                    }
+                    if snapshot.needsYouCount > 0 {
+                        Text("\(snapshot.needsYouCount) need you")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.orange)
                     }
 
                     Spacer()
@@ -129,6 +190,16 @@ private struct AppRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // Hover reveals the drop-down after a short dwell; moving to a
+            // sibling row swaps the open one (accordion). Click still toggles.
+            .onHover { hovering in
+                hoverTask?.cancel()
+                guard hovering, !isOpen else { return }
+                hoverTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(160))
+                    if !Task.isCancelled { onHoverOpen() }
+                }
+            }
 
             if isOpen {
                 dropDown
@@ -202,23 +273,42 @@ struct ThreadRow: View {
 
     @ViewBuilder
     private var statusDot: some View {
-        if thread.isGenerating {
-            PulsingDot()
-        } else {
-            Circle()
-                .fill(thread.status() == .active ? .green : Color.secondary.opacity(0.4))
-                .frame(width: 6, height: 6)
+        switch thread.status() {
+        case .generating:
+            SpinnerArc()
+        case .waitingOnYou:
+            PulsingDot(color: .orange)
+        case .active:
+            Circle().fill(.blue).frame(width: 6, height: 6)
+        case .idle:
+            Circle().fill(Color.secondary.opacity(0.4)).frame(width: 6, height: 6)
         }
     }
 }
 
-/// A gently pulsing green dot for threads that are generating right now.
-private struct PulsingDot: View {
+/// A small rotating arc: this thread is generating right now.
+struct SpinnerArc: View {
+    @State private var spinning = false
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: 0.72)
+            .stroke(.green, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+            .frame(width: 8, height: 8)
+            .rotationEffect(.degrees(spinning ? 360 : 0))
+            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: spinning)
+            .onAppear { spinning = true }
+    }
+}
+
+/// A gently pulsing dot: this agent is blocked waiting on the human.
+struct PulsingDot: View {
+    let color: Color
     @State private var pulsing = false
 
     var body: some View {
         Circle()
-            .fill(.green)
+            .fill(color)
             .frame(width: 6, height: 6)
             .scaleEffect(pulsing ? 1.4 : 0.8)
             .opacity(pulsing ? 0.6 : 1)

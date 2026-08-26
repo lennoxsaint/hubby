@@ -1,11 +1,14 @@
+import AppKit
 import Foundation
 
 /// Codex threads — the ChatGPT desktop app (bundle `com.openai.codex`) and
-/// the Codex CLI share one home: `~/.codex`. Three read-only stores:
-///   - `state_N.sqlite` `threads`      → authoritative rows + recency
-///   - `session_index.jsonl`           → human thread names (renames land here)
-///   - `thread_history_1.sqlite`       → exact "generating right now" turns
-/// If the databases are unreadable we degrade to the rollout-file scan.
+/// the Codex CLI share one home: `~/.codex`. Read-only stores:
+///   - `state_N.sqlite` `threads`      → authoritative rows, names, recency
+///   - `session_index.jsonl`           → rename overlay (fallback names)
+///   - the thread's rollout jsonl      → generating-right-now (RolloutTail)
+/// (`thread_history_1.sqlite` is NOT used: it only covers `paginated` threads
+/// — 0.3% of a real install — and its `inProgress` rows survive crashes.)
+/// If the database is unreadable we degrade to the rollout-file scan.
 struct CodexSource: AgentSource {
     let codexDir: URL
 
@@ -22,6 +25,17 @@ struct CodexSource: AgentSource {
 
     var watchedPaths: [URL] { [codexDir] }
 
+    /// The ChatGPT desktop app registers `codex://threads/<state-thread-id>`
+    /// — the only true per-thread deep link among the supported apps.
+    func jump(to thread: AgentThread?) -> Bool {
+        if let thread, let url = URL(string: "codex://threads/\(thread.id)"),
+           NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
+            NSWorkspace.shared.open(url)
+            return true
+        }
+        return activateApp()
+    }
+
     func fetchThreads() -> [AgentThread] {
         guard let stateDB = latestStateDB(),
               let rows = threadRows(from: stateDB) else {
@@ -30,7 +44,7 @@ struct CodexSource: AgentSource {
         return CodexThreadMerge.merge(
             dbRows: rows,
             index: sessionIndex(),
-            activeIDs: inProgressThreadIDs(),
+            activeIDs: liveThreadIDs(rows: rows),
             cap: Self.maxThreads)
     }
 
@@ -51,14 +65,35 @@ struct CodexSource: AgentSource {
 
     private func threadRows(from db: URL) -> [CodexDBRow]? {
         let sql = """
-            SELECT id, title, cwd, recency_at_ms FROM threads
+            SELECT id, name, title, cwd, recency_at_ms, rollout_path FROM threads
             WHERE archived = 0 ORDER BY recency_at_ms DESC LIMIT \(Self.fetchLimit)
             """
         return SQLiteReader.query(db, mode: .liveWAL, sql: sql)?.compactMap { row in
             guard let id = row.string(0) else { return nil }
             return CodexDBRow(
-                id: id, title: row.string(1), cwd: row.string(2), recencyMs: row.int64(3))
+                id: id, name: row.string(1), title: row.string(2), cwd: row.string(3),
+                recencyMs: row.int64(4), rolloutPath: row.string(5))
         }
+    }
+
+    /// Rollout-tail liveness: recent recency → fresh rollout mtime → last
+    /// `task_started` after last `task_complete`. Covers every thread kind
+    /// (legacy, paginated, subagent, automation) and self-heals on crashes.
+    private func liveThreadIDs(rows: [CodexDBRow], now: Date = Date()) -> Set<String> {
+        var live: Set<String> = []
+        for row in rows {
+            guard let recencyMs = row.recencyMs,
+                  now.timeIntervalSince1970 - TimeInterval(recencyMs) / 1000 < 120,
+                  let rolloutPath = row.rolloutPath else { continue }
+            let url = URL(fileURLWithPath: rolloutPath)
+            guard let mtime = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                .contentModificationDate,
+                now.timeIntervalSince(mtime) < RolloutTail.mtimeFreshWindow,
+                let tail = FileReading.tail(of: url, bytes: RolloutTail.tailBytes),
+                RolloutTail.isLive(tail: tail) else { continue }
+            live.insert(row.id)
+        }
+        return live
     }
 
     private func sessionIndex() -> [String: JSONLParsers.CodexIndexEntry] {
@@ -67,16 +102,6 @@ struct CodexSource: AgentSource {
         return Dictionary(
             JSONLParsers.codexSessionIndex(from: data).map { ($0.id, $0) },
             uniquingKeysWith: { _, last in last })
-    }
-
-    private func inProgressThreadIDs() -> Set<String> {
-        let db = codexDir.appendingPathComponent("thread_history_1.sqlite")
-        let sql = """
-            SELECT DISTINCT thread_id FROM thread_turns
-            WHERE status = 'inProgress' AND completed_at IS NULL
-            """
-        guard let rows = SQLiteReader.query(db, mode: .liveWAL, sql: sql) else { return [] }
-        return Set(rows.compactMap { $0.string(0) })
     }
 
     // MARK: - Fallback: v0.1 rollout-file scan (today + yesterday)

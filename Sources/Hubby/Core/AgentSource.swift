@@ -33,18 +33,22 @@ extension AgentSource {
 
     /// Bring the agent app frontmost. `thread` lets adapters target a
     /// specific window/tab; the default just activates the app.
-    func jump(to thread: AgentThread?) {
+    /// Returns false when nothing could be activated so the UI can say so
+    /// (no more silent no-ops).
+    func jump(to thread: AgentThread?) -> Bool {
         activateApp()
     }
 
-    func activateApp() {
+    @discardableResult
+    func activateApp() -> Bool {
         for bundleID in info.bundleIDs {
             if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
                 let config = NSWorkspace.OpenConfiguration()
                 config.activates = true
                 NSWorkspace.shared.openApplication(at: url, configuration: config)
-                return
+                return true
             }
         }
+        return false
     }
 }

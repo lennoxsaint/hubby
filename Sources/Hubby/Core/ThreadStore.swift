@@ -54,11 +54,12 @@ final class ThreadStore: ObservableObject {
         }
     }
 
-    /// Shared ordering: generating first, then most recent thread activity,
-    /// then merely-running apps, then the rest (stable by input order).
+    /// Shared ordering: generating first, then needs-you, then most recent
+    /// thread activity, then merely-running apps, then stable input order.
     nonisolated static func ordered(_ snapshots: [AgentSnapshot]) -> [AgentSnapshot] {
-        func key(_ snapshot: AgentSnapshot, _ offset: Int) -> (Int, TimeInterval, Int, Int) {
+        func key(_ snapshot: AgentSnapshot, _ offset: Int) -> (Int, Int, TimeInterval, Int, Int) {
             (snapshot.threads.contains(where: \.isGenerating) ? 1 : 0,
+             snapshot.threads.contains(where: \.isWaitingOnYou) ? 1 : 0,
              snapshot.threads.map(\.lastActivity.timeIntervalSince1970).max() ?? 0,
              snapshot.isRunning ? 1 : 0,
              -offset)
@@ -72,8 +73,14 @@ final class ThreadStore: ObservableObject {
         sources.first { $0.info.id == id }
     }
 
-    var totalActive: Int {
-        snapshots.reduce(0) { $0 + $1.activeCount }
+    /// Threads generating right now, across every app (green orb badge).
+    var totalRunning: Int {
+        snapshots.reduce(0) { $0 + $1.runningCount }
+    }
+
+    /// Agents blocked on the human, across every app (amber orb badge).
+    var totalNeedsYou: Int {
+        snapshots.reduce(0) { $0 + $1.needsYouCount }
     }
 
     nonisolated static func defaultSources() -> [AgentSource] {
@@ -91,16 +98,9 @@ final class ThreadStore: ObservableObject {
                 iconBundleID: "com.anthropic.claudefordesktop")),
             CursorSource(databaseURL: appSupport.appendingPathComponent(
                 "Cursor/User/globalStorage/conversation-search.db")),
-            RunningStateSource(info: AgentAppInfo(
-                id: "hermes", name: "Hermes",
-                bundleIDs: ["com.nousresearch.hermes"],
-                symbol: "wind", tintHex: 0x8E7CFF,
-                iconBundleID: "com.nousresearch.hermes")),
-            RunningStateSource(info: AgentAppInfo(
-                id: "grok-bot", name: "Grok Bot",
-                bundleIDs: ["com.anysphere.sand"],
-                symbol: "bolt.fill", tintHex: 0x3B3B3B,
-                iconBundleID: "com.anysphere.sand")),
+            HermesSource(stateDB: home.appendingPathComponent(".hermes/state.db")),
+            GrokBotSource(persistenceDir: appSupport.appendingPathComponent(
+                "Grok Bot/sand-client-persistence")),
         ]
     }
 }

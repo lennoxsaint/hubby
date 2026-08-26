@@ -18,9 +18,25 @@ enum HubbyMetrics {
     static let hubWidth: CGFloat = 330
     /// The scrollable rows area is capped; the hub itself hugs its content.
     static let maxRowsHeight: CGFloat = 520
+    /// Header + divider + capped rows; the panel is sized to always fit this.
+    static let maxHubHeight: CGFloat = 580
     static let cornerRadius: CGFloat = 24
-    /// Panel is padded slightly beyond content for shadow breathing room.
-    static let panelPadding: CGFloat = 8
+    /// Must exceed the largest shadow radius + offset, or the soft shadow is
+    /// hard-clipped at the panel edge and reads as a faint square outline.
+    static let panelPadding: CGFloat = 26
+
+    /// The panel never resizes: it is always big enough for the expanded hub,
+    /// and the hosting view's hitTest passes clicks through the unused area.
+    static var panelSize: CGSize {
+        CGSize(
+            width: hubWidth + panelPadding * 2,
+            height: maxHubHeight + panelPadding * 2)
+    }
+}
+
+enum HubbyAnim {
+    /// The one spring that drives the entire orb <-> hub morph.
+    static let morph = Animation.spring(response: 0.42, dampingFraction: 0.78)
 }
 
 let relativeTimeFormatter: RelativeDateTimeFormatter = {

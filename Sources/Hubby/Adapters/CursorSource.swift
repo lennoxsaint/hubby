@@ -2,7 +2,8 @@ import Foundation
 
 /// Cursor chats, read from the conversation-search index at
 /// `~/Library/Application Support/Cursor/User/globalStorage/conversation-search.db`.
-/// The database is opened read-only and never locked (immutable snapshot).
+/// Cursor writes it via WAL while running, so it opens plain read-only
+/// (immutable=1 fails or reads empty against a live WAL).
 struct CursorSource: AgentSource {
     let databaseURL: URL
 
@@ -13,7 +14,7 @@ struct CursorSource: AgentSource {
         iconBundleID: "com.todesktop.230313mzl4w4u92")
 
     private static let maxThreads = 8
-    private static let maxAge: TimeInterval = 7 * 24 * 3600
+    private static let maxAge: TimeInterval = 14 * 24 * 3600
 
     var watchedPaths: [URL] { [databaseURL.deletingLastPathComponent()] }
 
@@ -23,7 +24,7 @@ struct CursorSource: AgentSource {
             WHERE is_archived = 0 AND title <> ''
             ORDER BY updated_at DESC LIMIT \(Self.maxThreads)
             """
-        guard let rows = SQLiteReader.query(databaseURL, mode: .immutable, sql: sql) else {
+        guard let rows = SQLiteReader.query(databaseURL, mode: .liveWAL, sql: sql) else {
             return []
         }
         let cutoff = Date().addingTimeInterval(-Self.maxAge)

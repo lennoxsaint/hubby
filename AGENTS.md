@@ -8,10 +8,14 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
 
 1. **Read-only on other apps' data. Always.** Adapters may read other apps'
    session stores but must NEVER write to, lock, or migrate them. Go through
-   `Core/SQLiteReader`: snapshot databases open `mode=ro&immutable=1`; live-WAL
-   databases (e.g. Codex's) open plain `mode=ro` — `immutable=1` on a live WAL
-   returns stale/corrupt reads — with a temp-copy fallback on open failure.
+   `Core/SQLiteReader`: any database its owner writes while running (Codex,
+   Cursor, Hermes — all WAL) opens plain `mode=ro` — `immutable=1` against a
+   live WAL fails or reads empty — with a temp-copy fallback on open failure.
+   `immutable=1` is only for genuinely static snapshots.
    If a store can't be read safely, degrade to running-state detection.
+   Directory listings use path-based `contentsOfDirectory(atPath:)` + `stat`:
+   the URL-enumerator variant can spin indefinitely on a directory that a
+   live agent session is writing many times a second.
 2. **Native only.** SwiftUI + AppKit. No Electron, no Tauri, no web views.
    Minimalism is the product.
 3. **Graceful degradation is a feature.** Every `AgentSource` must work when its
@@ -28,6 +32,20 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
 - Test: `swift test`
 - Release + app bundle: `make app` (produces `dist/Hubby.app`)
 - Run: `open dist/Hubby.app`
+- Icon: `make icon`; sign/dmg/notarize/release targets in the Makefile
+  (notarize needs `ISSUER=<App Store Connect issuer uuid>`)
+
+## UI gotchas (learned the hard way)
+
+- A gesture that sits UNDER a Material in this movable-by-background panel
+  loses its mouseUp to AppKit's window-drag session — attach interaction
+  modifiers OUTSIDE the chrome (see RootView's onTapGesture placement).
+- `matchedGeometryEffect` displaced hit-testing in this borderless panel;
+  don't reintroduce it without re-verifying clicks.
+- The panel never resizes: it is always expanded-size and clear, with
+  `PassthroughHostingView.hitTest` gating events to the visible content.
+- `HUBBY_AUTOTEST=1` drives an expand/collapse cycle ~2.5s after launch for
+  deterministic screenshots/recordings.
 
 ## Architecture
 

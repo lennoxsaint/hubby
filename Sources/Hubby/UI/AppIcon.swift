@@ -6,15 +6,19 @@ import SwiftUI
 /// back to the SF Symbol placeholder.
 @MainActor
 enum AppIconLoader {
-    private static var cache: [String: NSImage] = [:]
+    /// nil is cached too — a missing app shouldn't hit NSWorkspace on
+    /// every render pass.
+    private static var cache: [String: NSImage?] = [:]
 
     static func icon(forBundleID bundleID: String) -> NSImage? {
         if let cached = cache[bundleID] { return cached }
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-            return nil
-        }
-        let image = NSWorkspace.shared.icon(forFile: url.path)
-        image.size = NSSize(width: 64, height: 64)
+        let image = NSWorkspace.shared
+            .urlForApplication(withBundleIdentifier: bundleID)
+            .map { url -> NSImage in
+                let icon = NSWorkspace.shared.icon(forFile: url.path)
+                icon.size = NSSize(width: 64, height: 64)
+                return icon
+            }
         cache[bundleID] = image
         return image
     }

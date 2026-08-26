@@ -15,10 +15,13 @@ enum SQLiteReader {
     }
 
     struct Row {
-        let values: [Any?] // String, Int64, or nil per column
+        let values: [Any?] // String, Int64, Double, or nil per column
 
         func string(_ index: Int) -> String? { values[index] as? String }
         func int64(_ index: Int) -> Int64? { values[index] as? Int64 }
+        func double(_ index: Int) -> Double? {
+            (values[index] as? Double) ?? (values[index] as? Int64).map(Double.init)
+        }
     }
 
     static func query(_ databaseURL: URL, mode: Mode, sql: String) -> [Row]? {
@@ -58,6 +61,8 @@ enum SQLiteReader {
                     switch sqlite3_column_type(statement, column) {
                     case SQLITE_INTEGER:
                         values.append(sqlite3_column_int64(statement, column))
+                    case SQLITE_FLOAT:
+                        values.append(sqlite3_column_double(statement, column))
                     case SQLITE_TEXT:
                         values.append(sqlite3_column_text(statement, column)
                             .map { String(cString: $0) })
