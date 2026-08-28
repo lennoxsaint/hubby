@@ -34,8 +34,9 @@ enum HubbyMetrics {
     }
 }
 
-/// The ink-glass identity: status colors shared by dots, rings, and labels.
-/// (Surface tokens live alongside once the chrome moves off system material.)
+/// The ink-glass identity: Hubby's own surface, not a system material.
+/// Near-opaque obsidian with a violet rim light — the same glass wraps the
+/// orb, the hub, and every floating card.
 enum HubbyGlass {
     /// Generating right now.
     static let running = Color(hex: 0x34D27A)
@@ -43,6 +44,33 @@ enum HubbyGlass {
     static let needsYou = Color.orange
     /// Finished, not yet jumped to.
     static let unread = Color(hex: 0x5AA2FF)
+
+    /// Hubby violet — the brand accent behind the rim light.
+    static let accent = Color(hex: 0x8E7CFF)
+    /// Obsidian surface; a hint of translucency keeps the desk-pet feel.
+    static let base = Color(hex: 0x0A0A0F).opacity(0.94)
+    /// Opacity floor behind `base` so the desktop never bleeds through text.
+    static let floor = Color.black.opacity(0.62)
+    /// Inner 0.5pt glass edge.
+    static let hairline = Color.white.opacity(0.22)
+
+    /// The colored rim light: accent circling the edge, brightest top-left.
+    static let rim = AngularGradient(
+        gradient: Gradient(stops: [
+            .init(color: accent.opacity(0.85), location: 0),
+            .init(color: accent.opacity(0.12), location: 0.3),
+            .init(color: accent.opacity(0.35), location: 0.55),
+            .init(color: accent.opacity(0.12), location: 0.8),
+            .init(color: accent.opacity(0.85), location: 1),
+        ]),
+        center: .center,
+        angle: .degrees(-125))
+
+    /// Soft top-third light catch on the glass.
+    static let sheen = LinearGradient(
+        colors: [Color.white.opacity(0.09), Color.white.opacity(0)],
+        startPoint: .top,
+        endPoint: .center)
 }
 
 enum HubbyAnim {

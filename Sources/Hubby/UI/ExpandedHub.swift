@@ -8,7 +8,7 @@ struct HubHeightKey: PreferenceKey {
     }
 }
 
-/// The expanded state: a frosted rounded square listing every agent app,
+/// The expanded state: an ink-glass rounded square listing every agent app,
 /// each expandable into a drop-down of its live threads. Height is dynamic:
 /// the hub ends just below the last row, scrolling only past a cap.
 struct ExpandedHub: View {
@@ -100,7 +100,7 @@ struct ExpandedHub: View {
             let travel = viewport - thumbHeight - 8
             let progress = min(max(scrollOffset / (rowsHeight - viewport), 0), 1)
             Capsule()
-                .fill(.white.opacity(0.25))
+                .fill(.white.opacity(0.35))
                 .frame(width: 3, height: thumbHeight)
                 .padding(.trailing, 3)
                 .offset(y: 4 + travel * progress)
@@ -213,7 +213,7 @@ private struct AppRow: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.white.opacity(isOpen ? 0.06 : 0)))
+                .fill(.white.opacity(isOpen ? 0.08 : 0)))
     }
 
     private var dropDown: some View {

@@ -60,6 +60,9 @@ struct RootView: View {
             width: HubbyMetrics.panelSize.width,
             height: HubbyMetrics.panelSize.height,
             alignment: .topLeading)
+        // The ink glass is one committed look: resolve every semantic color
+        // for dark so light-mode desktops don't get gray-on-black text.
+        .environment(\.colorScheme, .dark)
         .onPreferenceChange(HubHeightKey.self) { panel.setContentHeight($0) }
     }
 }
@@ -82,8 +85,9 @@ private struct MorphSurface<Content: View>: View {
 }
 
 /// Animatable so the corner radius interpolates per-frame with the spring.
-/// Material stays shape-scoped (`.background(_:in:)`) — a plain fill or a
-/// post-hoc clip leaves a square NSVisualEffectView backing in a clear panel.
+/// The ink glass replaced the system Material, but every fill and stroke
+/// stays scoped to the morphing shape — a plain fill or a post-hoc clip
+/// painted a square backing in this clear panel, and the discipline holds.
 private struct MorphChrome: ViewModifier, Animatable {
     var radius: CGFloat
 
@@ -96,9 +100,15 @@ private struct MorphChrome: ViewModifier, Animatable {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         content
             .clipShape(shape)
-            .background(.ultraThinMaterial, in: shape)
-            .overlay(shape.strokeBorder(.white.opacity(0.15), lineWidth: 1))
-            .shadow(color: .black.opacity(0.28), radius: 14, y: 5)
+            .background(shape.fill(HubbyGlass.base))
+            .background(shape.fill(HubbyGlass.floor))
+            .overlay(shape.fill(HubbyGlass.sheen).allowsHitTesting(false))
+            .overlay(shape.strokeBorder(HubbyGlass.hairline, lineWidth: 0.5))
+            .overlay(
+                shape.strokeBorder(HubbyGlass.rim, lineWidth: 1)
+                    .blur(radius: 0.6)
+                    .allowsHitTesting(false))
+            .shadow(color: .black.opacity(0.45), radius: 16, y: 6)
     }
 }
 
