@@ -17,6 +17,19 @@ struct HermesSource: AgentSource {
 
     var watchedPaths: [URL] { [stateDB.deletingLastPathComponent()] }
 
+    /// Sessions carry a cwd, so window matching works the same way it does
+    /// for terminals: raise the window titled after the project.
+    func jump(to thread: AgentThread?) -> JumpResolution {
+        if let thread, WindowLocator.isTrusted,
+           WindowLocator.raiseWindow(bundleIDs: info.bundleIDs, scorer: {
+               WindowLocator.score(
+                   windowTitle: $0, cwd: thread.cwd, threadTitle: thread.title)
+           }) {
+            return .window
+        }
+        return activateApp() ? .appActivated : .failed
+    }
+
     func fetchThreads() -> [AgentThread] {
         // messages is small (~10k rows); the group-by keeps last activity
         // honest for sessions that stay open for weeks.

@@ -31,12 +31,11 @@ extension AgentSource {
         return AgentSnapshot(info: info, isRunning: running, threads: threads)
     }
 
-    /// Bring the agent app frontmost. `thread` lets adapters target a
-    /// specific window/tab; the default just activates the app.
-    /// Returns false when nothing could be activated so the UI can say so
-    /// (no more silent no-ops).
-    func jump(to thread: AgentThread?) -> Bool {
-        activateApp()
+    /// Bring the thread frontmost — as precisely as the app allows. Adapters
+    /// override with deep links or Accessibility window matching; the
+    /// default just activates the app and says so honestly.
+    func jump(to thread: AgentThread?) -> JumpResolution {
+        activateApp() ? .appActivated : .failed
     }
 
     @discardableResult

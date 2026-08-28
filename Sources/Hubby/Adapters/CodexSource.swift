@@ -27,13 +27,13 @@ struct CodexSource: AgentSource {
 
     /// The ChatGPT desktop app registers `codex://threads/<state-thread-id>`
     /// — the only true per-thread deep link among the supported apps.
-    func jump(to thread: AgentThread?) -> Bool {
+    func jump(to thread: AgentThread?) -> JumpResolution {
         if let thread, let url = URL(string: "codex://threads/\(thread.id)"),
            NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
             NSWorkspace.shared.open(url)
-            return true
+            return .exactThread
         }
-        return activateApp()
+        return activateApp() ? .appActivated : .failed
     }
 
     func fetchThreads() -> [AgentThread] {

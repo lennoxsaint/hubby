@@ -14,11 +14,12 @@ enum HubbyMain {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var panel: FloatingPanel?
     private var panelController: PanelController?
     private var store: ThreadStore?
     private var statusItem: NSStatusItem?
+    private var exactJumpsItem: NSMenuItem?
     private var hotkey: HotkeyManager?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -73,6 +74,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(withTitle: "Show Hubby", action: #selector(showPanel), keyEquivalent: "")
         menu.addItem(withTitle: "Refresh Threads", action: #selector(refresh), keyEquivalent: "r")
+        // The way back in for users who dismissed the in-hub Accessibility
+        // offer; hidden once the grant exists (see menuNeedsUpdate).
+        let axItem = NSMenuItem(
+            title: "Enable Exact Jumps…", action: #selector(enableExactJumps), keyEquivalent: "")
+        menu.addItem(axItem)
+        exactJumpsItem = axItem
         let loginItem = NSMenuItem(
             title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
@@ -80,8 +87,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Hubby", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
+        menu.delegate = self
         item.menu = menu
         statusItem = item
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        exactJumpsItem?.isHidden = WindowLocator.isTrusted
+    }
+
+    @objc private func enableExactJumps() {
+        WindowLocator.promptForTrust()
     }
 
     @objc private func showPanel() {

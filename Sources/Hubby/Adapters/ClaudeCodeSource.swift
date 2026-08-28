@@ -31,14 +31,35 @@ struct ClaudeCodeSource: AgentSource {
         "com.microsoft.VSCode",
     ]
 
-    func jump(to thread: AgentThread?) -> Bool {
+    /// Land on the exact terminal/editor window when the Accessibility
+    /// grant allows (windows are titled after the session's cwd); otherwise
+    /// fall back to the first running terminal — and admit a better landing
+    /// exists so the UI can offer the grant.
+    func jump(to thread: AgentThread?) -> JumpResolution {
+        if let thread, WindowLocator.isTrusted,
+           WindowLocator.raiseWindow(bundleIDs: Self.terminalBundleIDs, scorer: {
+               WindowLocator.score(
+                   windowTitle: $0, cwd: thread.cwd, threadTitle: thread.title,
+                   hints: ["claude"])
+           }) {
+            return .exactThread
+        }
+        let fallback = activateFirstRunningTerminal()
+        if thread != nil, !WindowLocator.isTrusted, fallback != .failed {
+            return .needsAccessibility
+        }
+        return fallback
+    }
+
+    private func activateFirstRunningTerminal() -> JumpResolution {
         let running = NSWorkspace.shared.runningApplications
         for bundleID in Self.terminalBundleIDs {
-            if let app = running.first(where: { $0.bundleIdentifier == bundleID }) {
-                return app.activate()
+            if let app = running.first(where: { $0.bundleIdentifier == bundleID }),
+               app.activate() {
+                return .window
             }
         }
-        return activateApp()
+        return activateApp() ? .appActivated : .failed
     }
 
     // Claude Code runs inside a terminal, so a running Terminal.app proves

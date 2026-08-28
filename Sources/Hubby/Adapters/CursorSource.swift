@@ -18,6 +18,19 @@ struct CursorSource: AgentSource {
 
     var watchedPaths: [URL] { [databaseURL.deletingLastPathComponent()] }
 
+    /// Cursor registers no chat deep link (verified against the bundle;
+    /// adopt one the moment it ships). Best effort: raise the window whose
+    /// title carries the chat's words — conversation rows store no cwd.
+    func jump(to thread: AgentThread?) -> JumpResolution {
+        if let thread, WindowLocator.isTrusted,
+           WindowLocator.raiseWindow(bundleIDs: info.bundleIDs, scorer: {
+               WindowLocator.score(windowTitle: $0, cwd: nil, threadTitle: thread.title)
+           }) {
+            return .window
+        }
+        return activateApp() ? .appActivated : .failed
+    }
+
     func fetchThreads() -> [AgentThread] {
         let sql = """
             SELECT id, title, updated_at FROM conversations

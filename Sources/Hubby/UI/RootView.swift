@@ -8,6 +8,7 @@ struct RootView: View {
     @ObservedObject var panel: PanelController
 
     @State private var jumpFailures = 0
+    @State private var axPrompt = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -15,23 +16,25 @@ struct RootView: View {
                 if panel.isExpanded {
                     ExpandedHub(
                         snapshots: store.snapshots,
-                        onJump: { snapshot, thread in
-                            // A click means "seen" even when the jump fails.
-                            if let thread {
-                                store.markRead(appID: snapshot.id, thread: thread)
-                            }
-                            if store.source(for: snapshot.id)?.jump(to: thread) == true {
-                                withAnimation(HubbyAnim.morph) { panel.setExpanded(false) }
-                            } else {
-                                // Missing app: shake instead of silently failing.
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.4)) {
-                                    jumpFailures += 1
-                                }
-                            }
-                        },
+                        onJump: handleJump,
                         onCollapse: {
                             withAnimation(HubbyAnim.morph) { panel.setExpanded(false) }
                         })
+                    .overlay(alignment: .bottom) {
+                        if axPrompt {
+                            AXOnboardingCard(
+                                onOpenSettings: {
+                                    WindowLocator.promptForTrust()
+                                    withAnimation(.spring(duration: 0.25)) { axPrompt = false }
+                                },
+                                onDismiss: {
+                                    AXOnboarding.decline()
+                                    withAnimation(.spring(duration: 0.25)) { axPrompt = false }
+                                })
+                            .padding(10)
+                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        }
+                    }
                     .transition(.opacity)
                 } else {
                     CollapsedOrb(
@@ -64,6 +67,28 @@ struct RootView: View {
         // for dark so light-mode desktops don't get gray-on-black text.
         .environment(\.colorScheme, .dark)
         .onPreferenceChange(HubHeightKey.self) { panel.setContentHeight($0) }
+    }
+
+    private func handleJump(snapshot: AgentSnapshot, thread: AgentThread?) {
+        // A click means "seen" even when the jump fails.
+        if let thread {
+            store.markRead(appID: snapshot.id, thread: thread)
+        }
+        let resolution = store.source(for: snapshot.id)?.jump(to: thread) ?? .failed
+        switch resolution {
+        case .failed:
+            // Missing app: shake instead of silently failing.
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.4)) {
+                jumpFailures += 1
+            }
+        case .needsAccessibility where AXOnboarding.shouldOffer:
+            // The app was activated behind us; hold the hub open for the
+            // one-time Accessibility pitch instead of collapsing over it.
+            AXOnboarding.markOffered()
+            withAnimation(.spring(duration: 0.3)) { axPrompt = true }
+        default:
+            withAnimation(HubbyAnim.morph) { panel.setExpanded(false) }
+        }
     }
 }
 

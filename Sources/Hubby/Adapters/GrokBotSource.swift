@@ -17,6 +17,19 @@ struct GrokBotSource: AgentSource {
 
     var watchedPaths: [URL] { [persistenceDir] }
 
+    /// Grok Bot windows title themselves after the focused agent, and the
+    /// thread title *is* the agent's name — an Accessibility title match
+    /// lands exactly when the agent has its own window.
+    func jump(to thread: AgentThread?) -> JumpResolution {
+        if let thread, WindowLocator.isTrusted,
+           WindowLocator.raiseWindow(bundleIDs: info.bundleIDs, scorer: {
+               WindowLocator.score(windowTitle: $0, cwd: nil, threadTitle: thread.title)
+           }) {
+            return .exactThread
+        }
+        return activateApp() ? .appActivated : .failed
+    }
+
     func fetchThreads() -> [AgentThread] {
         guard let names = try? FileManager.default
             .contentsOfDirectory(atPath: persistenceDir.path) else { return [] }
