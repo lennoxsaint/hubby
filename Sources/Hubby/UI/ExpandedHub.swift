@@ -22,6 +22,20 @@ struct ExpandedHub: View {
     @State private var scrollerVisible = false
     @State private var scrollerFadeTask: Task<Void, Never>?
 
+    /// Seeding works because the hub view is freshly inserted on every
+    /// expand — `State(initialValue:)` is honored each time.
+    init(
+        snapshots: [AgentSnapshot],
+        initialOpenApp: String? = nil,
+        onJump: @escaping (AgentSnapshot, AgentThread?) -> Void,
+        onCollapse: @escaping () -> Void
+    ) {
+        self.snapshots = snapshots
+        self.onJump = onJump
+        self.onCollapse = onCollapse
+        _openApp = State(initialValue: initialOpenApp)
+    }
+
     private var scrollHeight: CGFloat {
         min(rowsHeight, HubbyMetrics.maxRowsHeight)
     }

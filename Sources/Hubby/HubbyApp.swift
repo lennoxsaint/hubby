@@ -36,6 +36,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.onUserDidMove = {
             MainActor.assumeIsolated { controller.userMovedPanel() }
         }
+        panel.onFanScroll = { event in
+            MainActor.assumeIsolated {
+                controller.handleFanScroll(event, order: store.snapshots.map(\.id))
+            }
+        }
         controller.attach(panel: panel)
         panel.orderFrontRegardless()
 
@@ -158,8 +163,13 @@ final class HotkeyManager {
 @MainActor
 final class PanelController: ObservableObject {
     @Published private(set) var isExpanded = false
+    /// Which app a fan swipe pinned on top; nil = the store's smart order.
+    /// Ephemeral: cleared on collapse and after 30s of collapsed idling.
+    @Published private(set) var pinnedTopID: String?
     private weak var panel: FloatingPanel?
     private var outsideClickMonitor: Any?
+    private var pinResetTask: Task<Void, Never>?
+    private var scrollAccumulator: CGFloat = 0
 
     /// Last natural height reported by the hub content.
     private var hubContentHeight: CGFloat = 220
@@ -191,10 +201,52 @@ final class PanelController: ObservableObject {
     /// whole animation; no window resize happens.
     func setExpanded(_ expanded: Bool) {
         guard panel != nil, expanded != isExpanded else { return }
-        if expanded { shiftToFitHub() }
+        if expanded {
+            shiftToFitHub()
+            // The pin survives into the hub (it decides which app is first);
+            // only the idle countdown stops.
+            pinResetTask?.cancel()
+        }
         isExpanded = expanded
         updateOutsideClickMonitor()
-        if !expanded { restorePreExpandOrigin() }
+        if !expanded {
+            restorePreExpandOrigin()
+            // Collapse hands the stack back to the smart order.
+            pinnedTopID = nil
+        }
+    }
+
+    /// One fan swipe step over the collapsed orb: the top icon slides under
+    /// the stack, the next rises. Consumes the event when it applies.
+    /// `order` is the store's current (unrotated) app order.
+    func handleFanScroll(_ event: NSEvent, order: [String]) -> Bool {
+        guard !isExpanded else { return false } // the hub's ScrollView owns scrolls
+        guard abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) else { return false }
+        if event.phase == .began { scrollAccumulator = 0 }
+        // One flick = one step: swallow the momentum tail so it neither
+        // multi-steps the fan nor scrolls whatever sits beneath the panel.
+        guard event.momentumPhase == [] else { return true }
+        scrollAccumulator += event.scrollingDeltaX
+        if abs(scrollAccumulator) >= 28 {
+            let direction = scrollAccumulator > 0 ? 1 : -1
+            scrollAccumulator = 0
+            withAnimation(HubbyAnim.fanCycle) {
+                pinnedTopID = FanRotation.cycled(order, from: pinnedTopID, direction: direction)
+            }
+            armPinReset()
+        }
+        if event.phase == .ended || event.phase == .cancelled { scrollAccumulator = 0 }
+        return true
+    }
+
+    /// While collapsed, an untouched pin drifts back to the smart order.
+    private func armPinReset() {
+        pinResetTask?.cancel()
+        pinResetTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(30))
+            guard !Task.isCancelled, let self, !self.isExpanded else { return }
+            withAnimation(HubbyAnim.fanCycle) { self.pinnedTopID = nil }
+        }
     }
 
     func setContentHeight(_ height: CGFloat) {
@@ -272,6 +324,14 @@ final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var needsPanelToBecomeKey: Bool { true }
 
+    /// The fan cycler gets first refusal on scrolls (collapsed orb only);
+    /// everything it declines flows on to SwiftUI — the hub's ScrollView
+    /// depends on that.
+    override func scrollWheel(with event: NSEvent) {
+        if (window as? FloatingPanel)?.onFanScroll?(event) == true { return }
+        super.scrollWheel(with: event)
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let provider = interactiveRect else { return super.hitTest(point) }
         let local = convert(point, from: superview)
@@ -300,6 +360,8 @@ final class FloatingPanel: NSPanel {
     /// (orb or hub) so snapping targets the content edges.
     var visibleContentSize: (() -> CGSize)?
     var onUserDidMove: (() -> Void)?
+    /// Fan-cycle scroll handler; returns true when the event was consumed.
+    var onFanScroll: ((NSEvent) -> Bool)?
 
     init<Content: View>(content: Content, interactiveRect: @escaping () -> CGRect) {
         let size = HubbyMetrics.panelSize

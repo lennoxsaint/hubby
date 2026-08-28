@@ -78,6 +78,8 @@ enum HubbyAnim {
     static let morph = Animation.spring(response: 0.42, dampingFraction: 0.78)
     /// Ring segments growing/shrinking as thread states change.
     static let badge = Animation.spring(response: 0.3, dampingFraction: 0.8)
+    /// One fan-swipe step: top card slides under, its neighbor rises.
+    static let fanCycle = Animation.spring(response: 0.35, dampingFraction: 0.75)
 }
 
 let relativeTimeFormatter: RelativeDateTimeFormatter = {

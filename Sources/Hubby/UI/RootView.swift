@@ -10,12 +10,21 @@ struct RootView: View {
     @State private var jumpFailures = 0
     @State private var axPrompt = false
 
+    /// The store's smart order, rotated by any fan-swipe pin so the chosen
+    /// app leads both the orb stack and the hub rows.
+    private var orderedSnapshots: [AgentSnapshot] {
+        FanRotation.rotated(store.snapshots, top: panel.pinnedTopID)
+    }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             MorphSurface(expanded: panel.isExpanded) {
                 if panel.isExpanded {
                     ExpandedHub(
-                        snapshots: store.snapshots,
+                        snapshots: orderedSnapshots,
+                        // A deliberate swipe means "show me this app":
+                        // arrive with its threads already open.
+                        initialOpenApp: panel.pinnedTopID,
                         onJump: handleJump,
                         onCollapse: {
                             withAnimation(HubbyAnim.morph) { panel.setExpanded(false) }
@@ -38,7 +47,7 @@ struct RootView: View {
                     .transition(.opacity)
                 } else {
                     CollapsedOrb(
-                        snapshots: store.snapshots,
+                        snapshots: orderedSnapshots,
                         counts: RingCounts(
                             running: store.totalRunning,
                             needsYou: store.totalNeedsYou,
