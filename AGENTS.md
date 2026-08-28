@@ -37,13 +37,28 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
 
 ## UI gotchas (learned the hard way)
 
-- A gesture that sits UNDER a Material in this movable-by-background panel
+- A gesture that sits UNDER the chrome in this movable-by-background panel
   loses its mouseUp to AppKit's window-drag session — attach interaction
   modifiers OUTSIDE the chrome (see RootView's onTapGesture placement).
+  This predates the ink-glass swap (it's about the window, not the old
+  Material) and still holds.
+- The chrome background must stay scoped to the morphing shape (fills and
+  strokes on the `RoundedRectangle` inside `MorphChrome`); a plain fill or
+  post-hoc clip painted a square backing in this clear panel.
 - `matchedGeometryEffect` displaced hit-testing in this borderless panel;
   don't reintroduce it without re-verifying clicks.
 - The panel never resizes: it is always expanded-size and clear, with
   `PassthroughHostingView.hitTest` gating events to the visible content.
+  Floating cards (recap, AX onboarding) must fit inside `panelSize` — never
+  grow the metrics for them.
+- `PassthroughHostingView.scrollWheel` gives the fan cycler first refusal;
+  anything it declines (vertical scrolls, everything while expanded) MUST
+  fall through to `super` or the hub's ScrollView dies.
+- Accessibility (exact-jump window matching) needs no entitlement — only
+  the user's TCC grant, and TCC keys it to the binary: a `swift build`
+  debug run and `dist/Hubby.app` hold separate grants, so test the flow
+  against `make app`'s bundle. Never present system UI from the
+  nonactivating panel; the in-hub card + status-menu item are the pattern.
 - `HUBBY_AUTOTEST=1` drives an expand/collapse cycle ~2.5s after launch for
   deterministic screenshots/recordings.
 
@@ -52,7 +67,9 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
 - `Core/Models.swift` — `AgentThread`, `AgentApp` value types.
 - `Core/AgentSource.swift` — the adapter protocol. This is also the plugin
   contract for new agent apps: implement it, register in `ThreadStore.sources`.
-- `Core/ThreadStore.swift` — observable store; polls sources every 5s.
+- `Core/ThreadStore.swift` — observable store; FSEvents-driven refresh with
+  a 30s fallback timer. Snapshots are decorated with read/unread state
+  (`Core/ReadState.swift`) on the main actor before ordering.
 - `Adapters/*.swift` — one adapter per agent app.
 - `UI/` — `CollapsedOrb` (circle), `ExpandedHub` (rounded square), morph between
   them lives in `HubbyPanel`.

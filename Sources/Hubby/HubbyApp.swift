@@ -73,8 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(
-            systemSymbolName: "circle.hexagongrid.circle.fill", accessibilityDescription: "Hubby")
+        let glyph = OctopusGlyph.menuBarImage()
+        glyph.accessibilityDescription = "Hubby"
+        item.button?.image = glyph
 
         let menu = NSMenu()
         menu.addItem(withTitle: "Show Hubby", action: #selector(showPanel), keyEquivalent: "")

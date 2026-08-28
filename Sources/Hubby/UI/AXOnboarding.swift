@@ -30,8 +30,8 @@ struct AXOnboardingCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: "scope")
-                    .font(.system(size: 14, weight: .bold))
+                Image(nsImage: OctopusGlyph.menuBarImage())
+                    .renderingMode(.template)
                     .foregroundStyle(HubbyGlass.accent)
                 Text("Land on the exact window")
                     .font(.system(.callout, design: .rounded).weight(.semibold))
