@@ -30,13 +30,27 @@ struct AppIconView: View {
     let info: AgentAppInfo
     let size: CGFloat
     var dimmed: Bool = false
+    /// When set (and non-empty), a segmented status ring circumscribes the
+    /// icon; the icon shrinks slightly to make room.
+    var ring: RingCounts? = nil
+
+    private var hasRing: Bool { ring.map { !$0.isEmpty } ?? false }
 
     var body: some View {
         iconBody
-            .frame(width: size, height: size)
+            .frame(
+                width: size - (hasRing ? 7 : 0),
+                height: size - (hasRing ? 7 : 0))
             .overlay(alignment: .bottomTrailing) { badge }
             .opacity(dimmed ? 0.45 : 1)
             .saturation(dimmed ? 0.2 : 1)
+            .frame(width: size, height: size)
+            .overlay {
+                if hasRing, let ring {
+                    SegmentedStatusRing(counts: ring)
+                        .padding(0.5)
+                }
+            }
     }
 
     @ViewBuilder

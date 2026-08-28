@@ -48,6 +48,8 @@ enum HubbyGlass {
 enum HubbyAnim {
     /// The one spring that drives the entire orb <-> hub morph.
     static let morph = Animation.spring(response: 0.42, dampingFraction: 0.78)
+    /// Ring segments growing/shrinking as thread states change.
+    static let badge = Animation.spring(response: 0.3, dampingFraction: 0.8)
 }
 
 let relativeTimeFormatter: RelativeDateTimeFormatter = {

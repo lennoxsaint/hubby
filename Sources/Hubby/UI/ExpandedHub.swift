@@ -157,7 +157,8 @@ private struct AppRow: View {
                     AppIconView(
                         info: snapshot.info,
                         size: 26,
-                        dimmed: !snapshot.isRunning && snapshot.threads.isEmpty)
+                        dimmed: !snapshot.isRunning && snapshot.threads.isEmpty,
+                        ring: RingCounts(snapshot: snapshot))
 
                     Text(snapshot.info.name)
                         .font(.system(.body, design: .rounded).weight(.medium))
@@ -165,12 +166,17 @@ private struct AppRow: View {
                     if snapshot.runningCount > 0 {
                         Text("\(snapshot.runningCount) running")
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(HubbyGlass.running)
                     }
                     if snapshot.needsYouCount > 0 {
                         Text("\(snapshot.needsYouCount) need you")
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(HubbyGlass.needsYou)
+                    }
+                    if snapshot.unreadCount > 0 {
+                        Text("\(snapshot.unreadCount) new")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(HubbyGlass.unread)
                     }
 
                     Spacer()

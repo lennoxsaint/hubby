@@ -36,8 +36,11 @@ struct RootView: View {
                 } else {
                     CollapsedOrb(
                         snapshots: store.snapshots,
-                        totalRunning: store.totalRunning,
-                        totalNeedsYou: store.totalNeedsYou)
+                        counts: RingCounts(
+                            running: store.totalRunning,
+                            needsYou: store.totalNeedsYou,
+                            unread: store.totalUnread,
+                            total: store.totalThreads))
                     .transition(.spinFade)
                 }
             }

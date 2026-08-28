@@ -1,12 +1,13 @@
 import SwiftUI
 
 /// The resting state's content: a little 3D-ish deck of the most recently
-/// active apps' icons plus badges. Chrome (material circle, border, shadow)
-/// is drawn by the shared MorphSurface so the shape morphs continuously.
+/// active apps' icons, ringed by the machine-wide status arcs. Chrome
+/// (glass circle, border, shadow) is drawn by the shared MorphSurface so
+/// the shape morphs continuously.
 struct CollapsedOrb: View {
     let snapshots: [AgentSnapshot]
-    let totalRunning: Int
-    let totalNeedsYou: Int
+    /// Machine-wide totals: running / needs-you / unread over all threads.
+    let counts: RingCounts
 
     /// Fan shows the store's order (recency), frontmost = most recent.
     private var featured: [AgentSnapshot] {
@@ -19,6 +20,13 @@ struct CollapsedOrb: View {
         ZStack {
             iconFan
 
+            // The orb's rim is the badge: proportional arcs for running,
+            // needs-you, and unread — legible however many threads exist.
+            if !counts.isEmpty {
+                SegmentedStatusRing(counts: counts, lineWidth: 2.5)
+                    .padding(3)
+            }
+
             if snapshots.count > Self.fanCount {
                 Text("+\(snapshots.count - Self.fanCount)")
                     .font(.system(size: 8, weight: .bold, design: .rounded))
@@ -29,27 +37,11 @@ struct CollapsedOrb: View {
                             y: HubbyMetrics.orbDiameter / 2 - 12)
             }
 
-            if totalRunning > 0 {
-                Text("\(totalRunning)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(.green))
+            // "Never leave an agent hanging": the one number that wants the
+            // human — blocked agents + unread results, capped at 9+.
+            if counts.attention > 0 {
+                AttentionPill(count: counts.attention, urgent: counts.needsYou > 0)
                     .offset(x: HubbyMetrics.orbDiameter / 2 - 10,
-                            y: -HubbyMetrics.orbDiameter / 2 + 10)
-            }
-
-            // "Never leave an agent hanging": amber badge when any agent is
-            // blocked waiting on the human.
-            if totalNeedsYou > 0 {
-                Text("\(totalNeedsYou)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(.orange))
-                    .offset(x: -HubbyMetrics.orbDiameter / 2 + 10,
                             y: -HubbyMetrics.orbDiameter / 2 + 10)
             }
         }
