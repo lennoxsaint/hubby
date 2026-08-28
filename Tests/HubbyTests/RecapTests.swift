@@ -2,29 +2,70 @@ import XCTest
 @testable import Hubby
 
 final class RecapTests: XCTestCase {
-    func testFirstSentenceCutsAtBoundary() {
-        let text = "The build finished with 38 tests green. Next I would look at the release pipeline and the notarization flow."
+    func testPlainStripsMarkdown() {
+        let raw = """
+        ## Done ✅
+        - Fixed the **parser** in `windows.js`
+        - See [the docs](https://example.com/docs)
+
+        ```swift
+        let x = 1
+        ```
+        All 38 tests green.
+        """
         XCTAssertEqual(
-            Recap.firstSentence(of: text),
-            "The build finished with 38 tests green.")
+            RecapText.plain(raw),
+            "Done ✅ Fixed the parser in windows.js See the docs All 38 tests green.")
     }
 
-    func testFirstSentenceTrimsLongRuns() {
+    func testPlainDropsRulesAndOrderedMarkers() {
+        XCTAssertEqual(
+            RecapText.plain("1. First thing\n---\n2) Second thing"),
+            "First thing Second thing")
+    }
+
+    func testExcerptShortTextPassesThrough() {
+        XCTAssertEqual(RecapText.excerpt("Build finished."), "Build finished.")
+    }
+
+    func testExcerptKeepsWholeSentencesUnderLimit() {
+        let text = "The build finished with 38 tests green. Next I would look at the "
+            + "release pipeline. Then the notarization flow needs a full dry run "
+            + "before anything ships to users at all."
+        let excerpt = RecapText.excerpt(text)
+        XCTAssertEqual(
+            excerpt,
+            "The build finished with 38 tests green. Next I would look at the release pipeline.")
+    }
+
+    func testExcerptSkipsAbbreviationsAndDottedNumbers() {
+        let text = "Ship v1. 2 fixes the flag, e.g. the retry path works now. "
+            + String(repeating: "Padding sentence follows here. ", count: 6)
+        let excerpt = RecapText.excerpt(text)
+        XCTAssertEqual(
+            excerpt?.hasPrefix("Ship v1. 2 fixes the flag, e.g. the retry path works now."),
+            true)
+    }
+
+    func testExcerptWordBoundaryCutWhenNoSentenceFits() {
         let text = String(repeating: "word ", count: 60)
-        let sentence = Recap.firstSentence(of: text)
-        XCTAssertNotNil(sentence)
-        XCTAssertLessThanOrEqual(sentence!.count, 92)
-        XCTAssertTrue(sentence!.hasSuffix("…"))
+        let excerpt = RecapText.excerpt(text)
+        XCTAssertNotNil(excerpt)
+        XCTAssertLessThanOrEqual(excerpt!.count, 141)
+        XCTAssertTrue(excerpt!.hasSuffix("…"))
+        XCTAssertFalse(excerpt!.contains("wor…")) // never mid-word
     }
 
-    func testFirstSentenceFlattensNewlines() {
-        XCTAssertEqual(
-            Recap.firstSentence(of: "Done!\nEverything passed. More detail follows."),
-            "Done! Everything passed.")
+    func testExcerptEmptyIsNil() {
+        XCTAssertNil(RecapText.excerpt("   \n "))
+        XCTAssertNil(RecapText.excerpt("```\ncode only\n```"))
     }
 
-    func testFirstSentenceEmptyIsNil() {
-        XCTAssertNil(Recap.firstSentence(of: "   \n "))
+    func testRecapCapsAtWordBoundary() {
+        let recap = RecapText.recap(String(repeating: "alpha ", count: 60))
+        XCTAssertNotNil(recap)
+        XCTAssertLessThanOrEqual(recap!.count, 201)
+        XCTAssertTrue(recap!.hasSuffix("…"))
     }
 
     func testClaudeCodeSlugFromTail() {
@@ -47,10 +88,4 @@ final class RecapTests: XCTestCase {
         XCTAssertEqual(without, 0)
     }
 
-    func testCursorBodyTailSkipsPartialSentence() {
-        let tail = "artial words from mid sentence. The fix landed cleanly and tests pass."
-        XCTAssertEqual(
-            CursorSource.recapFromBodyTail(tail),
-            "The fix landed cleanly and tests pass.")
-    }
 }

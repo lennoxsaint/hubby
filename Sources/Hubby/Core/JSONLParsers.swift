@@ -36,8 +36,9 @@ enum JSONLParsers {
             guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
                   obj["type"] as? String == "assistant",
                   let message = obj["message"] as? [String: Any],
-                  let text = messageText(message), !text.isEmpty else { continue }
-            return clean(text, limit: 200)
+                  let text = messageText(message),
+                  let recap = RecapText.recap(text) else { continue }
+            return recap
         }
         return nil
     }
@@ -52,16 +53,18 @@ enum JSONLParsers {
             switch obj["type"] as? String {
             case "event_msg":
                 if payload["type"] as? String == "agent_message",
-                   let text = payload["message"] as? String, !text.isEmpty {
-                    return clean(text, limit: 200)
+                   let text = payload["message"] as? String,
+                   let recap = RecapText.recap(text) {
+                    return recap
                 }
             case "response_item":
                 if payload["type"] as? String == "message",
                    payload["role"] as? String == "assistant",
                    let blocks = payload["content"] as? [[String: Any]] {
-                    for block in blocks where block["type"] as? String == "output_text" {
-                        if let text = block["text"] as? String, !text.isEmpty {
-                            return clean(text, limit: 200)
+                    for block in blocks.reversed() where block["type"] as? String == "output_text" {
+                        if let text = block["text"] as? String,
+                           let recap = RecapText.recap(text) {
+                            return recap
                         }
                     }
                 }
@@ -247,7 +250,10 @@ enum JSONLParsers {
     private static func messageText(_ message: [String: Any]) -> String? {
         if let text = message["content"] as? String { return text }
         if let blocks = message["content"] as? [[String: Any]] {
-            for block in blocks where block["type"] as? String == "text" {
+            // The LAST text block: assistants often open with a preamble
+            // ("Let me check the file.") before tool calls; the closing
+            // block is the actual answer.
+            for block in blocks.reversed() where block["type"] as? String == "text" {
                 if let text = block["text"] as? String { return text }
             }
         }

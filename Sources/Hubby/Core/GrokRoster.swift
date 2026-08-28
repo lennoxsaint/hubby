@@ -65,10 +65,9 @@ enum GrokRoster {
                 cwd: nil,
                 // "Why is this agent blocked" beats everything; otherwise the
                 // roster's last-entry preview is what the agent last said.
-                recap: (awaiting?["reason"] as? String)
-                    .flatMap { $0.isEmpty ? nil : JSONLParsers.clean($0, limit: 200) }
+                recap: (awaiting?["reason"] as? String).flatMap { RecapText.recap($0) }
                     ?? ((row["lastEntry"] as? [String: Any])?["text"] as? String)
-                    .flatMap { $0.isEmpty ? nil : JSONLParsers.clean($0, limit: 200) },
+                    .flatMap { RecapText.recap($0) },
                 isWaitingOnYou: awaiting != nil)
         }
         let sorted = threads.sorted {

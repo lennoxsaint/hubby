@@ -99,7 +99,7 @@ struct PromptCard: View {
                         .foregroundStyle(.primary.opacity(0.85))
                         .lineLimit(1)
                     if let description = option.description,
-                       let sentence = Recap.firstSentence(of: description, limit: 70) {
+                       let sentence = RecapText.excerpt(description, limit: 70) {
                         Text(sentence)
                             .font(.system(size: 9.5, design: .rounded))
                             .foregroundStyle(.tertiary)

@@ -14,13 +14,17 @@ struct HubHeightKey: PreferenceKey {
 /// the hub ends just below the last row, scrolling only past a cap.
 struct ExpandedHub: View {
     let snapshots: [AgentSnapshot]
+    /// Which side gutter the hover card floats in (screen-space choice).
+    let cardSide: CardSide
     let onJump: (AgentSnapshot, AgentThread?) -> Void
     let onCollapse: () -> Void
     /// Answer a blocked prompt (nil = approve, else 0-based option).
     let onAnswer: (AgentSnapshot, AgentThread, Int?) -> Void
     let onTogglePin: (AgentSnapshot, AgentThread) -> Void
-    let onMarkRead: (AgentSnapshot, AgentThread) -> Void
-    let onNudge: (AgentSnapshot, AgentThread) -> Void
+    /// The visible card's frame in hub coordinates (nil = no card). The
+    /// panel needs it: the card sits OUTSIDE the hub rect, so hitTest and
+    /// the outside-click monitor must widen to it while it shows.
+    let onCardRect: (CGRect?) -> Void
 
     @State private var openApp: String?
     @State private var rowsHeight: CGFloat = 0
@@ -29,8 +33,10 @@ struct ExpandedHub: View {
     @State private var scrollerFadeTask: Task<Void, Never>?
     /// Drives the expand cascade; flipped once per insertion.
     @State private var revealed = false
-    /// Thread id whose recap card is showing (500ms hover dwell).
-    @State private var recapID: String?
+    /// Thread id whose recap card is showing (short hover dwell). Owned by
+    /// RootView: the card itself renders in CardOverlay OUTSIDE the morph
+    /// chrome (its clip would swallow a card drawn in the gutter).
+    @Binding private var recapID: String?
     /// Poller-driven hover: the anchor key under the cursor + dwell ticks.
     /// NSTrackingArea/onHover proved unreliable in this borderless panel
     /// (silent no-fire depending on key status), so hover is derived from
@@ -41,28 +47,32 @@ struct ExpandedHub: View {
     /// shifts rows under a stationary cursor; requiring real movement
     /// before the next hover-open stops the open-cascade churn.
     @State private var lastHoverOpenPoint: CGPoint?
-    private let hoverTimer = Timer.publish(every: 0.12, on: .main, in: .common).autoconnect()
+    /// Last card frame pushed to `onCardRect` (dedupes per-tick pushes).
+    @State private var pushedCardRect: CGRect?
+    private let hoverTimer = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
 
     /// Seeding works because the hub view is freshly inserted on every
     /// expand — `State(initialValue:)` is honored each time.
     init(
         snapshots: [AgentSnapshot],
         initialOpenApp: String? = nil,
+        cardSide: CardSide = .right,
+        recapID: Binding<String?> = .constant(nil),
         onJump: @escaping (AgentSnapshot, AgentThread?) -> Void,
         onCollapse: @escaping () -> Void,
         onAnswer: @escaping (AgentSnapshot, AgentThread, Int?) -> Void = { _, _, _ in },
         onTogglePin: @escaping (AgentSnapshot, AgentThread) -> Void = { _, _ in },
-        onMarkRead: @escaping (AgentSnapshot, AgentThread) -> Void = { _, _ in },
-        onNudge: @escaping (AgentSnapshot, AgentThread) -> Void = { _, _ in }
+        onCardRect: @escaping (CGRect?) -> Void = { _ in }
     ) {
         self.snapshots = snapshots
+        self.cardSide = cardSide
         self.onJump = onJump
         self.onCollapse = onCollapse
         self.onAnswer = onAnswer
         self.onTogglePin = onTogglePin
-        self.onMarkRead = onMarkRead
-        self.onNudge = onNudge
+        self.onCardRect = onCardRect
         _openApp = State(initialValue: initialOpenApp)
+        _recapID = recapID
     }
 
     /// Every blocked thread across every app — the Needs-you strip's rows.
@@ -102,7 +112,7 @@ struct ExpandedHub: View {
                             isOpen: openApp == snapshot.id,
                             hoveredKey: hoverKey,
                             onToggle: {
-                                withAnimation(.spring(duration: 0.3)) {
+                                withAnimation(HubbyAnim.accordion) {
                                     openApp = openApp == snapshot.id ? nil : snapshot.id
                                 }
                             },
@@ -116,7 +126,7 @@ struct ExpandedHub: View {
                         .opacity(revealed ? 1 : 0)
                         .offset(y: revealed ? 0 : 10)
                         .animation(
-                            HubbyAnim.cascade.delay(0.05 + Double(min(index, 8)) * 0.045),
+                            HubbyAnim.cascade.delay(0.03 + Double(min(index, 8)) * 0.022),
                             value: revealed)
                     }
                 }
@@ -177,13 +187,16 @@ struct ExpandedHub: View {
         }
         .onChange(of: openApp) { recapID = nil } // its row is gone/moved
         .frame(width: HubbyMetrics.hubWidth)
+        // The tick loop only; the card renders in CardOverlay (RootView),
+        // outside the chrome's clip. This GeometryReader draws nothing and
+        // takes no hits.
         .overlayPreferenceValue(RecapAnchorKey.self) { anchors in
-            recapOverlay(anchors: anchors)
-                .background(GeometryReader { proxy in
-                    Color.clear.onReceive(hoverTimer) { _ in
-                        hoverTick(anchors: anchors, proxy: proxy)
-                    }
-                })
+            GeometryReader { proxy in
+                Color.clear.onReceive(hoverTimer) { _ in
+                    hoverTick(anchors: anchors, proxy: proxy)
+                }
+            }
+            .allowsHitTesting(false)
         }
         // Chrome (material, border, shadow) lives in MorphSurface so orb and
         // hub share one continuously morphing shape.
@@ -192,21 +205,24 @@ struct ExpandedHub: View {
         })
     }
 
-    /// The cursor in hub-content coordinates (top-left origin), or nil
-    /// when it is outside the panel's visible content.
+    /// The cursor in hub-content coordinates (top-left origin), or nil when
+    /// it is outside the hub AND its card gutters — the card floats beside
+    /// the hub, so the gutters count as hoverable ground.
     private func mouseInHub() -> CGPoint? {
         guard let panel = NSApp.windows.first(where: { $0 is FloatingPanel && $0.isVisible })
         else { return nil }
         let mouse = NSEvent.mouseLocation
         let local = CGPoint(
-            x: mouse.x - panel.frame.minX - HubbyMetrics.panelPadding,
+            x: mouse.x - panel.frame.minX - HubbyMetrics.contentInsetX,
             y: (panel.frame.maxY - mouse.y) - HubbyMetrics.panelPadding)
-        guard local.x >= 0, local.x <= HubbyMetrics.hubWidth, local.y >= 0 else { return nil }
+        guard local.x >= -HubbyMetrics.cardGutter,
+              local.x <= HubbyMetrics.hubWidth + HubbyMetrics.cardGutter,
+              local.y >= 0 else { return nil }
         return local
     }
 
-    /// One 120ms hover tick: resolve the row under the cursor and drive the
-    /// accordion (2 ticks ≈ 240ms) and the recap card (4 ticks ≈ 480ms).
+    /// One 80ms hover tick: resolve the row under the cursor and drive the
+    /// accordion (2 ticks ≈ 160ms) and the recap card (2 ticks ≈ 160ms).
     private func hoverTick(anchors: [String: Anchor<CGRect>], proxy: GeometryProxy) {
         let point = mouseInHub()
         let key = point.flatMap { p in
@@ -216,19 +232,21 @@ struct ExpandedHub: View {
             FileHandle.standardError.write(Data(
                 "tick p=\(point.map { "\(Int($0.x)),\(Int($0.y))" } ?? "-") key=\(key ?? "-") ticks=\(hoverTicks)\n".utf8))
         }
+        pushCardRect(anchors: anchors, proxy: proxy)
         // While a card is showing, the cursor is allowed to leave the row
-        // and travel INTO the card (it has clickable options/controls);
-        // dismissing on that transit would make the buttons unreachable.
+        // and travel INTO the card (it has clickable options/controls) —
+        // including across the gap between the hub's edge and the card.
+        // Dismissing on that transit would make the buttons unreachable.
         if let id = recapID, let point,
            let rect = cardRect(for: id, anchors: anchors, proxy: proxy),
-           rect.insetBy(dx: -6, dy: -6).contains(point) {
+           keepAliveZone(around: rect, proxy: proxy).contains(point) {
             return
         }
         if key != hoverKey {
             hoverKey = key
             hoverTicks = 0
             if recapID != nil, key != recapID {
-                withAnimation(.easeOut(duration: 0.15)) { recapID = nil }
+                withAnimation(HubbyAnim.cardFade) { recapID = nil }
             }
             return
         }
@@ -240,88 +258,53 @@ struct ExpandedHub: View {
             } ?? true
             if hoverTicks == 2, openApp != appID, moved {
                 lastHoverOpenPoint = point
-                withAnimation(.spring(duration: 0.3)) { openApp = appID }
+                withAnimation(HubbyAnim.accordion) { openApp = appID }
             }
-        } else if hoverTicks >= 4, recapID != key {
-            withAnimation(.easeOut(duration: 0.15)) { recapID = key }
+        } else if hoverTicks >= 2, recapID != key {
+            withAnimation(HubbyAnim.cardFade) { recapID = key }
         }
     }
 
-    /// Where the floating card for anchor key `id` sits: below the row,
-    /// flipped above near the hub's bottom, x-clamped to the hub. One
-    /// formula shared by layout and the hover keepalive so they agree.
+    /// The card rect grown by slop and stretched across the hub-to-card gap
+    /// so the cursor's transit never lands on dead ground mid-crossing.
+    private func keepAliveZone(around rect: CGRect, proxy: GeometryProxy) -> CGRect {
+        var zone = rect.insetBy(dx: -6, dy: -6)
+        switch cardSide {
+        case .right:
+            let bridge = proxy.size.width - 4 // just inside the hub's edge
+            zone = CGRect(
+                x: bridge, y: zone.minY,
+                width: zone.maxX - bridge, height: zone.height)
+        case .left:
+            zone = CGRect(
+                x: zone.minX, y: zone.minY,
+                width: 4 - zone.minX, height: zone.height)
+        }
+        return zone
+    }
+
+    /// Report the live card frame (hub coordinates) whenever it changes so
+    /// the panel can widen hit-testing to it — the card lives outside the
+    /// hub rect and would otherwise be click-through.
+    private func pushCardRect(anchors: [String: Anchor<CGRect>], proxy: GeometryProxy) {
+        let rect = recapID.flatMap { cardRect(for: $0, anchors: anchors, proxy: proxy) }
+        if rect != pushedCardRect {
+            pushedCardRect = rect
+            onCardRect(rect)
+        }
+    }
+
+    /// The card frame for anchor key `id`, via the shared CardGeometry
+    /// formula so layout (CardOverlay), keepalive, and hitTest agree.
     private func cardRect(
         for id: String, anchors: [String: Anchor<CGRect>], proxy: GeometryProxy
     ) -> CGRect? {
         guard let anchor = anchors[id], let entry = resolve(id) else { return nil }
-        let rect = proxy[anchor]
-        let width: CGFloat = 270
-        let height: CGFloat
-        if let prompt = entry.thread.pendingPrompt {
-            height = prompt.kind == .approve
-                ? 120 : 90 + CGFloat(min(prompt.options.count, 4)) * 34
-        } else {
-            height = 110
-        }
-        let x = min(max(rect.minX, 6), proxy.size.width - width - 6)
-        let below = rect.maxY + 4
-        let y = below + height > proxy.size.height
-            ? max(rect.minY - height - 4, 6) : below
-        return CGRect(x: x, y: y, width: width, height: height)
-    }
-
-    /// The floating card, anchored by the hovered row's reported bounds.
-    /// Interactive — prompt options and recap controls are clickable; only
-    /// the card's own frame takes hits, everything around it passes through
-    /// to the rows (the GeometryReader has no hit surface of its own).
-    @ViewBuilder
-    private func recapOverlay(anchors: [String: Anchor<CGRect>]) -> some View {
-        GeometryReader { proxy in
-            if let id = recapID,
-               let rect = cardRect(for: id, anchors: anchors, proxy: proxy),
-               let entry = resolve(id) {
-                card(for: entry)
-                    .frame(width: rect.width, alignment: .leading)
-                    .offset(x: rect.minX, y: rect.minY)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func card(for entry: (snapshot: AgentSnapshot, thread: AgentThread)) -> some View {
-        if let prompt = entry.thread.pendingPrompt {
-            PromptCard(thread: entry.thread, prompt: prompt) { optionIndex in
-                withAnimation(.easeOut(duration: 0.15)) { recapID = nil }
-                onAnswer(entry.snapshot, entry.thread, optionIndex)
-            }
-        } else {
-            RecapCard(
-                thread: entry.thread,
-                onCopy: entry.thread.recap.map { recap in
-                    {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(recap, forType: .string)
-                        withAnimation(.easeOut(duration: 0.15)) { recapID = nil }
-                    }
-                },
-                onMarkRead: {
-                    withAnimation(.easeOut(duration: 0.15)) { recapID = nil }
-                    onMarkRead(entry.snapshot, entry.thread)
-                },
-                onNudge: canNudge(entry) ? {
-                    withAnimation(.easeOut(duration: 0.15)) { recapID = nil }
-                    onNudge(entry.snapshot, entry.thread)
-                } : nil)
-        }
-    }
-
-    /// Nudge only where it can act: an idle Claude Code session with
-    /// nothing pending (the actuator re-verifies both before typing).
-    private func canNudge(_ entry: (snapshot: AgentSnapshot, thread: AgentThread)) -> Bool {
-        entry.snapshot.id == "claude-code"
-            && entry.thread.pendingPrompt == nil
-            && entry.thread.status() == .idle
+        return CardGeometry.rect(
+            rowRect: proxy[anchor],
+            prompt: entry.thread.pendingPrompt,
+            side: cardSide,
+            hubSize: proxy.size)
     }
 
     /// A pill tap approves immediately (green) or reveals the options card
@@ -330,7 +313,7 @@ struct ExpandedHub: View {
         if thread.pendingPrompt?.kind == .approve {
             onAnswer(snapshot, thread, nil)
         } else {
-            withAnimation(.easeOut(duration: 0.15)) { recapID = key }
+            withAnimation(HubbyAnim.cardFade) { recapID = key }
         }
     }
 

@@ -53,4 +53,5 @@ to it — proof captured in one gesture, routed to the reason it was taken.
 
 - True circular-scroll detection (angle tracking) if the vertical-scroll
   spin doesn't feel spinny enough in practice.
-- Haptic tick per 60° step via NSHapticFeedbackManager.
+- ~~Haptic tick per 60° step via NSHapticFeedbackManager.~~ Shipped with
+  the side-gutter card milestone.

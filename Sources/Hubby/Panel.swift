@@ -5,6 +5,9 @@ import SwiftUI
 /// everything else falls through to whatever is beneath the clear panel.
 final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
     var interactiveRect: (() -> CGRect)?
+    /// A second interactive region: the hover card floating in a gutter
+    /// OUTSIDE the hub rect. Nil when no card is showing.
+    var auxiliaryRect: (() -> CGRect?)?
 
     /// The panel is non-activating and usually not key; without first-mouse
     /// acceptance the initial click only orders the window and never reaches
@@ -30,13 +33,22 @@ final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let provider = interactiveRect else { return super.hitTest(point) }
         let local = convert(point, from: superview)
-        var rect = provider()
-        if !isFlipped {
-            rect.origin.y = bounds.height - rect.origin.y - rect.height
-        }
         // Small slop so the hairline border still catches drags.
-        guard rect.insetBy(dx: -4, dy: -4).contains(local) else { return nil }
-        return super.hitTest(point)
+        if flipped(provider()).insetBy(dx: -4, dy: -4).contains(local) {
+            return super.hitTest(point)
+        }
+        if let aux = auxiliaryRect?() ,
+           flipped(aux).insetBy(dx: -4, dy: -4).contains(local) {
+            return super.hitTest(point)
+        }
+        return nil
+    }
+
+    private func flipped(_ rect: CGRect) -> CGRect {
+        guard !isFlipped else { return rect }
+        var r = rect
+        r.origin.y = bounds.height - r.origin.y - r.height
+        return r
     }
 }
 
@@ -45,7 +57,10 @@ final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
 /// and persistence work against the *visible content* rect, not the panel.
 final class FloatingPanel: NSPanel {
     // v2: origin semantics changed when the panel became constant-size.
-    private static let positionKey = "HubbyPanelOrigin.v2"
+    // v3: the panel grew a card gutter either side; the content shifted
+    //     right by one gutter inside the frame, so old origins migrate.
+    private static let positionKey = "HubbyPanelOrigin.v3"
+    private static let legacyPositionKey = "HubbyPanelOrigin.v2"
     private static let snapMargin: CGFloat = 24
     private static let snapInset: CGFloat = 8
     private var snapWorkItem: DispatchWorkItem?
@@ -60,7 +75,11 @@ final class FloatingPanel: NSPanel {
     /// Trackpad pinch handler (collapsed-orb fidget).
     var onMagnify: ((NSEvent) -> Void)?
 
-    init<Content: View>(content: Content, interactiveRect: @escaping () -> CGRect) {
+    init<Content: View>(
+        content: Content,
+        interactiveRect: @escaping () -> CGRect,
+        auxiliaryRect: @escaping () -> CGRect? = { nil }
+    ) {
         let size = HubbyMetrics.panelSize
         // No .fullSizeContentView: on macOS 14+ it drags in the scene
         // background / safe-area path that paints a gray square behind us.
@@ -83,6 +102,7 @@ final class FloatingPanel: NSPanel {
 
         let hosting = PassthroughHostingView(rootView: content)
         hosting.interactiveRect = interactiveRect
+        hosting.auxiliaryRect = auxiliaryRect
         hosting.safeAreaRegions = [] // no scene-background square on 14+
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = NSColor.clear.cgColor
@@ -121,27 +141,28 @@ final class FloatingPanel: NSPanel {
     private func snapToEdgeAndSave() {
         guard let screen = screen ?? NSScreen.main else { savePosition(); return }
         let visible = screen.visibleFrame
-        let pad = HubbyMetrics.panelPadding
+        let padX = HubbyMetrics.contentInsetX
+        let padY = HubbyMetrics.panelPadding
         let content = visibleContentSize?()
             ?? CGSize(width: HubbyMetrics.orbDiameter, height: HubbyMetrics.orbDiameter)
         var f = frame
 
-        let left = f.minX + pad
+        let left = f.minX + padX
         let right = left + content.width
-        let top = f.maxY - pad
+        let top = f.maxY - padY
         let bottom = top - content.height
 
         if left - visible.minX < Self.snapMargin {
-            f.origin.x = visible.minX + Self.snapInset - pad
+            f.origin.x = visible.minX + Self.snapInset - padX
         }
         if visible.maxX - right < Self.snapMargin {
-            f.origin.x = visible.maxX - Self.snapInset - content.width - pad
+            f.origin.x = visible.maxX - Self.snapInset - content.width - padX
         }
         if bottom - visible.minY < Self.snapMargin {
-            f.origin.y = visible.minY + Self.snapInset + content.height + pad - f.height
+            f.origin.y = visible.minY + Self.snapInset + content.height + padY - f.height
         }
         if visible.maxY - top < Self.snapMargin {
-            f.origin.y = visible.maxY - Self.snapInset + pad - f.height
+            f.origin.y = visible.maxY - Self.snapInset + padY - f.height
         }
         if f.origin != frame.origin {
             setFrameProgrammatically(f, animate: true)
@@ -156,13 +177,21 @@ final class FloatingPanel: NSPanel {
     private func restorePosition() {
         if let saved = UserDefaults.standard.string(forKey: Self.positionKey) {
             setFrameOrigin(NSPointFromString(saved))
+        } else if let legacy = UserDefaults.standard.string(forKey: Self.legacyPositionKey) {
+            // Keep the visible content where it was: the frame gained one
+            // gutter of leading margin, so the origin slides left by it.
+            var origin = NSPointFromString(legacy)
+            origin.x -= HubbyMetrics.cardGutter
+            setFrameOrigin(origin)
+            savePosition()
+            UserDefaults.standard.removeObject(forKey: Self.legacyPositionKey)
         } else if let screen = NSScreen.main {
             // Default: orb tucked into the upper-right corner.
             let visible = screen.visibleFrame
-            let pad = HubbyMetrics.panelPadding
             setFrameOrigin(NSPoint(
-                x: visible.maxX - Self.snapInset - HubbyMetrics.orbDiameter - pad,
-                y: visible.maxY - Self.snapInset + pad - frame.height))
+                x: visible.maxX - Self.snapInset - HubbyMetrics.orbDiameter
+                    - HubbyMetrics.contentInsetX,
+                y: visible.maxY - Self.snapInset + HubbyMetrics.panelPadding - frame.height))
         }
     }
 }

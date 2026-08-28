@@ -42,11 +42,11 @@ struct RecapCard: View {
                 .font(.system(size: 11, design: .rounded).weight(.medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            if let sentence = thread.recap.flatMap({ Recap.firstSentence(of: $0) }) {
+            if let sentence = thread.recap.flatMap({ RecapText.excerpt($0) }) {
                 Text(sentence)
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.primary.opacity(0.75))
-                    .lineLimit(2)
+                    .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if onCopy != nil || onMarkRead != nil || onNudge != nil {
@@ -107,26 +107,3 @@ struct RecapCard: View {
     }
 }
 
-/// Pure text helpers for recap display, unit-testable without a view.
-enum Recap {
-    /// The first sentence of a message, trimmed to ~90 characters. Falls
-    /// back to a plain prefix when no sentence boundary appears early.
-    static func firstSentence(of text: String, limit: Int = 90) -> String? {
-        let flattened = text
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !flattened.isEmpty else { return nil }
-        var sentence = flattened
-        for terminator in [". ", "! ", "? "] {
-            if let range = flattened.range(of: terminator),
-               flattened.distance(from: flattened.startIndex, to: range.lowerBound) >= 12 {
-                let candidate = String(flattened[..<range.lowerBound]) + String(terminator.first!)
-                if candidate.count < sentence.count { sentence = candidate }
-            }
-        }
-        if sentence.count > limit {
-            sentence = String(sentence.prefix(limit)).trimmingCharacters(in: .whitespaces) + "…"
-        }
-        return sentence
-    }
-}

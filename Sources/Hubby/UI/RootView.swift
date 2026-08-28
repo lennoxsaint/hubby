@@ -9,6 +9,10 @@ struct RootView: View {
 
     @State private var jumpFailures = 0
     @State private var axPrompt = false
+    /// The hovered thread's card id. Owned here because the card renders in
+    /// CardOverlay OUTSIDE the morph chrome (its clip covers the gutters);
+    /// the hub's hover poller drives it through a binding.
+    @State private var recapID: String?
 
     /// The store's smart order, rotated by any fan-swipe pin so the chosen
     /// app leads both the orb stack and the hub rows.
@@ -26,6 +30,8 @@ struct RootView: View {
                         // already open — a swipe-pick decides which app that
                         // is; otherwise it's the most active one.
                         initialOpenApp: panel.pinnedTopID ?? orderedSnapshots.first?.id,
+                        cardSide: panel.cardSide,
+                        recapID: $recapID,
                         onJump: handleJump,
                         onCollapse: {
                             withAnimation(HubbyAnim.morph) { panel.setExpanded(false) }
@@ -34,10 +40,7 @@ struct RootView: View {
                         onTogglePin: { snapshot, thread in
                             store.togglePin(appID: snapshot.id, thread: thread)
                         },
-                        onMarkRead: { snapshot, thread in
-                            store.markRead(appID: snapshot.id, thread: thread)
-                        },
-                        onNudge: handleNudge)
+                        onCardRect: { panel.setCardRect($0) })
                     .overlay(alignment: .bottom) {
                         if axPrompt {
                             AXOnboardingCard(
@@ -88,8 +91,27 @@ struct RootView: View {
                     withAnimation(HubbyAnim.morph) { panel.setExpanded(true) }
                 }
             }
+            // The hover card floats in a side gutter BEYOND the hub's edge,
+            // so it must render outside MorphChrome (whose clipShape would
+            // swallow it). The row anchors bubble up here as preferences.
+            .overlayPreferenceValue(RecapAnchorKey.self) { anchors in
+                if panel.isExpanded {
+                    CardOverlay(
+                        anchors: anchors,
+                        snapshots: orderedSnapshots,
+                        side: panel.cardSide,
+                        recapID: $recapID,
+                        onAnswer: handleAnswer,
+                        onMarkRead: { snapshot, thread in
+                            store.markRead(appID: snapshot.id, thread: thread)
+                        },
+                        onNudge: handleNudge)
+                }
+            }
         }
-        .padding(HubbyMetrics.panelPadding)
+        .onChange(of: panel.isExpanded) { recapID = nil }
+        .padding(.horizontal, HubbyMetrics.contentInsetX)
+        .padding(.vertical, HubbyMetrics.panelPadding)
         .frame(
             width: HubbyMetrics.panelSize.width,
             height: HubbyMetrics.panelSize.height,

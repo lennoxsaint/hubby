@@ -49,8 +49,22 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
   don't reintroduce it without re-verifying clicks.
 - The panel never resizes: it is always expanded-size and clear, with
   `PassthroughHostingView.hitTest` gating events to the visible content.
-  Floating cards (recap, AX onboarding) must fit inside `panelSize` — never
-  grow the metrics for them.
+  Since the side-gutter cards, `panelSize` is hub + a card gutter EITHER
+  side (`HubbyMetrics.contentInsetX` is the horizontal content inset —
+  horizontal geometry must use it, not `panelPadding`). Hover cards float
+  in the gutters; hitTest and the outside-click monitor widen to the live
+  card rect (`PanelController.setCardRect`, pushed by the hub's hover
+  tick). Cards must still fit inside `panelSize`.
+- Hover cards CANNOT be rendered from inside the hub's own view tree:
+  MorphChrome's `clipShape` swallows anything drawn beyond the hub's edge.
+  The card renders in `CardOverlay`, attached in RootView AFTER the chrome
+  (row anchors bubble up as preferences); `recapID` lives in RootView and
+  the hub drives it through a binding. `CardGeometry.rect` is the single
+  placement formula shared by layout, hover keepalive, and hitTest.
+- The hover keepalive needs a corridor: the card sits across a gap from
+  the hub, so the keepalive zone stretches from just inside the hub's edge
+  to the card's far side (`keepAliveZone`) — without it, the cursor's
+  transit across the gap dismisses the card before it can be clicked.
 - `PassthroughHostingView.scrollWheel` gives the fan cycler first refusal;
   anything it declines (vertical scrolls, everything while expanded) MUST
   fall through to `super` or the hub's ScrollView dies.

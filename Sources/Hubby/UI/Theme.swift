@@ -25,14 +25,32 @@ enum HubbyMetrics {
     /// Must exceed the largest shadow radius + offset, or the soft shadow is
     /// hard-clipped at the panel edge and reads as a faint square outline.
     static let panelPadding: CGFloat = 26
+    /// Hover-card width (recap and prompt cards share it).
+    static let cardWidth: CGFloat = 270
+    /// Gap between the hub's edge and a floating card.
+    static let cardGap: CGFloat = 10
+    /// Transparent side region beside the hub where hover cards float —
+    /// wide enough for a card, its gap, and a little shadow room.
+    static let cardGutter: CGFloat = cardWidth + cardGap * 2
 
-    /// The panel never resizes: it is always big enough for the expanded hub,
-    /// and the hosting view's hitTest passes clicks through the unused area.
+    /// Horizontal inset from the panel edge to the visible content (orb or
+    /// hub): padding + one card gutter. Vertical inset stays `panelPadding`.
+    static let contentInsetX: CGFloat = panelPadding + cardGutter
+
+    /// The panel never resizes: it is always big enough for the expanded hub
+    /// PLUS a card gutter either side, and the hosting view's hitTest passes
+    /// clicks through the unused clear area (including empty gutters).
     static var panelSize: CGSize {
         CGSize(
-            width: hubWidth + panelPadding * 2,
+            width: hubWidth + contentInsetX * 2,
             height: maxHubHeight + panelPadding * 2)
     }
+}
+
+/// Which side of the hub the hover card floats on. Chosen at expand time
+/// from screen space: right unless the right gutter would clip off-screen.
+enum CardSide {
+    case right, left
 }
 
 /// The blush-frost identity: Hubby's own surface, not a system material.
@@ -80,13 +98,17 @@ enum HubbyGlass {
 
 enum HubbyAnim {
     /// The one spring that drives the entire orb <-> hub morph.
-    static let morph = Animation.spring(response: 0.42, dampingFraction: 0.78)
+    static let morph = Animation.spring(response: 0.30, dampingFraction: 0.78)
     /// Ring segments growing/shrinking as thread states change.
     static let badge = Animation.spring(response: 0.3, dampingFraction: 0.8)
     /// One fan-swipe step: top card slides under, its neighbor rises.
     static let fanCycle = Animation.spring(response: 0.35, dampingFraction: 0.75)
     /// One hub row falling into place during the expand cascade.
     static let cascade = Animation.spring(response: 0.32, dampingFraction: 0.8)
+    /// Accordion drop-down open/close.
+    static let accordion = Animation.spring(duration: 0.22)
+    /// Hover card in/out.
+    static let cardFade = Animation.easeOut(duration: 0.10)
 }
 
 let relativeTimeFormatter: RelativeDateTimeFormatter = {

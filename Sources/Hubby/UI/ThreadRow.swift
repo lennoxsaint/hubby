@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// One thread inside an app's drop-down: status dot, title, project, time.
-/// Clicking jumps; a 500ms hover dwell floats the recap card (the row
-/// publishes its bounds through RecapAnchorKey for anchoring).
+/// Clicking jumps; a short hover dwell floats the recap card beside the hub
+/// (the row publishes its bounds through RecapAnchorKey for anchoring).
 struct ThreadRow: View {
     let thread: AgentThread
     /// Distinguishes the Needs-you strip's anchors from accordion rows'
@@ -50,6 +50,9 @@ struct ThreadRow: View {
                     .transition(.opacity)
                 }
             }
+            // Poller-driven hover has no withAnimation context; without this
+            // the pin glyph pops/flickers at the 80ms tick rate.
+            .animation(.easeOut(duration: 0.1), value: hovered)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .contentShape(Rectangle())
@@ -58,7 +61,7 @@ struct ThreadRow: View {
         // No .help here: the tooltip's own tracking swallowed the row's
         // hover events in this borderless panel, killing the recap dwell.
         // Rows always publish their bounds; the hub only reads the hovered
-        // one's. 500ms dwell — long enough to mean "tell me more".
+        // one's.
         .anchorPreference(key: RecapAnchorKey.self, value: .bounds) {
             [anchorPrefix + thread.id: $0]
         }

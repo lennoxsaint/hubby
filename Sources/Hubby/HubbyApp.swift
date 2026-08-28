@@ -27,9 +27,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let controller = PanelController()
 
         let root = RootView(store: store, panel: controller)
-        let panel = FloatingPanel(content: root, interactiveRect: {
-            MainActor.assumeIsolated { controller.interactiveRect }
-        })
+        let panel = FloatingPanel(
+            content: root,
+            interactiveRect: {
+                MainActor.assumeIsolated { controller.interactiveRect }
+            },
+            auxiliaryRect: {
+                MainActor.assumeIsolated { controller.auxiliaryInteractiveRect }
+            })
         panel.visibleContentSize = {
             MainActor.assumeIsolated { controller.visibleContentSize }
         }
@@ -177,11 +182,19 @@ final class PanelController: ObservableObject {
     /// Cumulative pinch magnification over the orb (negative = pinch-in,
     /// gathers the icons; a big pinch-out blooms the hub open).
     @Published private(set) var orbPinch: CGFloat = 0
+    /// Which gutter the hover card floats in — decided per expand from
+    /// screen space (right unless the right gutter would clip off-screen).
+    @Published private(set) var cardSide: CardSide = .right
+    /// The visible hover card's frame in hub coordinates, reported by the
+    /// hub each tick. Nil = no card.
+    private var cardRectInHub: CGRect?
     private weak var panel: FloatingPanel?
     private var outsideClickMonitor: Any?
     private var pinResetTask: Task<Void, Never>?
     private var spinSettleTask: Task<Void, Never>?
     private var scrollAccumulator: CGFloat = 0
+    /// Last 60°-step index that emitted a haptic tick during a spin.
+    private var lastHapticStep = 0
 
     /// Last natural height reported by the hub content.
     private var hubContentHeight: CGFloat = 220
@@ -197,8 +210,22 @@ final class PanelController: ObservableObject {
     /// coordinates (top-left origin — the hosting view is flipped).
     var interactiveRect: CGRect {
         CGRect(
-            origin: CGPoint(x: HubbyMetrics.panelPadding, y: HubbyMetrics.panelPadding),
+            origin: CGPoint(x: HubbyMetrics.contentInsetX, y: HubbyMetrics.panelPadding),
             size: visibleContentSize)
+    }
+
+    /// The floating card's rect in hosting-view coordinates, when showing —
+    /// it lives in a gutter outside `interactiveRect`, so the hosting view's
+    /// hitTest checks it separately.
+    var auxiliaryInteractiveRect: CGRect? {
+        guard isExpanded, let rect = cardRectInHub else { return nil }
+        return rect.offsetBy(
+            dx: HubbyMetrics.contentInsetX, dy: HubbyMetrics.panelPadding)
+    }
+
+    /// Hub-coordinate card frame reported by the hub's hover poller.
+    func setCardRect(_ rect: CGRect?) {
+        cardRectInHub = rect
     }
 
     var visibleContentSize: CGSize {
@@ -225,6 +252,7 @@ final class PanelController: ObservableObject {
             restorePreExpandOrigin()
             // Collapse hands the stack back to the smart order.
             pinnedTopID = nil
+            cardRectInHub = nil
         }
     }
 
@@ -261,6 +289,14 @@ final class PanelController: ObservableObject {
     private func handleSpinScroll(_ event: NSEvent, order: [String]) -> Bool {
         guard abs(event.scrollingDeltaY) > 0.4, !order.isEmpty else { return false }
         orbSpin += event.scrollingDeltaY * 1.4
+        // A soft haptic tick each time the flower crosses a 60° step —
+        // the trackpad clicks like a real fidget bearing.
+        let step = Int((orbSpin / 60).rounded())
+        if step != lastHapticStep {
+            lastHapticStep = step
+            NSHapticFeedbackManager.defaultPerformer.perform(
+                .alignment, performanceTime: .now)
+        }
         spinSettleTask?.cancel()
         spinSettleTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(220))
@@ -288,6 +324,7 @@ final class PanelController: ObservableObject {
                 self.orbSpin = 0
                 self.pinnedTopID = displayed[index]
             }
+            self.lastHapticStep = 0
             self.armPinReset()
         }
     }
@@ -332,14 +369,17 @@ final class PanelController: ObservableObject {
     private func shiftToFitHub() {
         guard let panel, let screen = panel.screen ?? NSScreen.main else { return }
         let visible = screen.visibleFrame
-        let pad = HubbyMetrics.panelPadding
+        let padX = HubbyMetrics.contentInsetX
+        let padY = HubbyMetrics.panelPadding
         let hubHeight = min(hubContentHeight, HubbyMetrics.maxHubHeight)
         var frame = panel.frame
 
-        let contentLeft = frame.minX + pad
-        let contentTop = frame.maxY - pad
+        let contentLeft = frame.minX + padX
+        let contentTop = frame.maxY - padY
         var dx: CGFloat = 0
         var dy: CGFloat = 0
+        // Only the HUB must stay on-screen; the gutters may hang off the
+        // side that isn't hosting the card.
         let overRight = (contentLeft + HubbyMetrics.hubWidth) - (visible.maxX - 8)
         if overRight > 0 { dx = -overRight }
         let underBottom = (visible.minY + 8) - (contentTop - hubHeight)
@@ -353,6 +393,10 @@ final class PanelController: ObservableObject {
         } else {
             preExpandOrigin = nil
         }
+
+        // Pick the card's gutter from the space the hub actually has.
+        let hubRight = frame.minX + padX + HubbyMetrics.hubWidth
+        cardSide = hubRight + HubbyMetrics.cardGutter <= visible.maxX ? .right : .left
     }
 
     private func restorePreExpandOrigin() {
@@ -369,11 +413,19 @@ final class PanelController: ObservableObject {
     private func screenContentRect() -> NSRect {
         guard let panel else { return .zero }
         let size = visibleContentSize
-        let pad = HubbyMetrics.panelPadding
         return NSRect(
-            x: panel.frame.minX + pad,
-            y: panel.frame.maxY - pad - size.height,
+            x: panel.frame.minX + HubbyMetrics.contentInsetX,
+            y: panel.frame.maxY - HubbyMetrics.panelPadding - size.height,
             width: size.width, height: size.height)
+    }
+
+    /// The floating card in screen coordinates, when showing.
+    private func screenCardRect() -> NSRect? {
+        guard let panel, isExpanded, let rect = cardRectInHub else { return nil }
+        return NSRect(
+            x: panel.frame.minX + HubbyMetrics.contentInsetX + rect.minX,
+            y: panel.frame.maxY - HubbyMetrics.panelPadding - rect.maxY,
+            width: rect.width, height: rect.height)
     }
 
     /// Clicking anywhere in another app collapses the hub. AppKit skips
@@ -388,7 +440,11 @@ final class PanelController: ObservableObject {
                 let location = event.window?.convertPoint(toScreen: event.locationInWindow)
                     ?? event.locationInWindow
                 Task { @MainActor in
-                    guard let self, !self.screenContentRect().insetBy(dx: -4, dy: -4).contains(location)
+                    guard let self,
+                          !self.screenContentRect().insetBy(dx: -4, dy: -4).contains(location),
+                          self.screenCardRect().map({
+                              !$0.insetBy(dx: -4, dy: -4).contains(location)
+                          }) ?? true
                     else { return }
                     withAnimation(HubbyAnim.morph) { self.setExpanded(false) }
                 }

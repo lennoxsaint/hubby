@@ -17,8 +17,9 @@
 - **All-clear**: the orb's rest state when nothing is blocked and nothing is unread — smaller, calmer, desaturated.
 - **Thread**: one conversation/session/agent inside an agent app.
 - **Unread**: a thread that finished while unobserved and has not been jumped to. Clears on jump or the recap card's mark-read.
+- **Gutter**: the transparent region either side of the hub where the hover card floats — beside the rows, never over them.
 - **Verdict**: the recap card's first line — plain words answering "finished, still working, or waiting on you".
-- **Recap**: the one-sentence "what just happened" under the verdict, extracted from the thread's last message.
+- **Recap**: the "what just happened" under the verdict — the thread's last **assistant** utterance, cleaned to plain prose. Omitted when the source can't attribute a speaker (Cursor): no recap beats a wrong one.
 - **Exact jump**: landing on the precise thread/window/tab (deep link or AX window match), as opposed to merely activating the app. A jump never launches or creates windows.
 - **Slug**: the `aiTitle` a Claude Code session writes into its file and its terminal tab title — the strongest window-match signal.
 - **Automation thread**: a scheduled Codex run ("Automation: …"); duplicates collapse to the newest run and rank below interactive threads.

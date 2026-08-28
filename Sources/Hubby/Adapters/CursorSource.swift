@@ -32,12 +32,12 @@ struct CursorSource: AgentSource {
     }
 
     func fetchThreads() -> [AgentThread] {
-        // The FTS body concatenates the conversation's text; its tail is
-        // the freshest exchange and feeds the hover recap.
+        // No recap: the FTS body interleaves user + assistant text with no
+        // role markers, so any "recap" from it is an unattributed fragment.
+        // A missing recap beats a wrong one — the card shows verdict + title.
         let sql = """
-            SELECT c.id, c.title, c.updated_at, substr(f.body, -400)
+            SELECT c.id, c.title, c.updated_at
             FROM conversations c
-            LEFT JOIN conversation_fts f ON f.rowid = c.fts_rowid
             WHERE c.is_archived = 0 AND c.title <> ''
             ORDER BY c.updated_at DESC LIMIT \(Self.maxThreads)
             """
@@ -51,24 +51,7 @@ struct CursorSource: AgentSource {
             let lastActivity = Date(timeIntervalSince1970: TimeInterval(updatedMs) / 1000)
             guard lastActivity > cutoff else { return nil }
             return AgentThread(
-                id: id, title: title, lastActivity: lastActivity, subtitle: nil, cwd: nil,
-                recap: row.string(3).flatMap(Self.recapFromBodyTail))
+                id: id, title: title, lastActivity: lastActivity, subtitle: nil, cwd: nil)
         }
-    }
-
-    /// A raw FTS tail starts mid-sentence; skip through the first sentence
-    /// boundary so the recap begins on a clean one.
-    static func recapFromBodyTail(_ tail: String) -> String? {
-        let trimmed = tail.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        for boundary in [". ", "! ", "? ", "\n"] {
-            if let range = trimmed.range(of: boundary),
-               trimmed.distance(from: trimmed.startIndex, to: range.lowerBound) < 200 {
-                let rest = trimmed[range.upperBound...]
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                return rest.isEmpty ? nil : JSONLParsers.clean(String(rest), limit: 200)
-            }
-        }
-        return JSONLParsers.clean(trimmed, limit: 200)
     }
 }

@@ -52,19 +52,21 @@ struct HermesSource: AgentSource {
         return threads(from: rows, now: now)
     }
 
-    /// The newest message of a session — the hover recap. One tiny query per
-    /// shown session (≤ maxThreads), nil-tolerant like everything else here.
+    /// The newest ASSISTANT message of a session — the hover recap. Without
+    /// the role filter this surfaced the user's own words or tool JSON.
+    /// One tiny query per shown session (≤ maxThreads), nil-tolerant.
     private func lastMessage(sessionID: String) -> String? {
         let escaped = sessionID.replacingOccurrences(of: "'", with: "''")
         let sql = """
             SELECT content FROM messages
             WHERE session_id = '\(escaped)'
+              AND role = 'assistant'
+              AND content IS NOT NULL AND content <> ''
             ORDER BY timestamp DESC LIMIT 1
             """
         guard let rows = SQLiteReader.query(stateDB, mode: .liveWAL, sql: sql),
-              let content = rows.first.flatMap({ $0.string(0) }),
-              !content.isEmpty else { return nil }
-        return JSONLParsers.clean(content, limit: 200)
+              let content = rows.first.flatMap({ $0.string(0) }) else { return nil }
+        return RecapText.recap(content)
     }
 
     private func threads(from rows: [SQLiteReader.Row], now: Date) -> [AgentThread] {
