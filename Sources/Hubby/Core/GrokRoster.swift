@@ -51,15 +51,16 @@ enum GrokRoster {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let activityMs = (row["lastActivityAt"] as? Double)
                 ?? (row["updatedAt"] as? Double)
+            // The bot's own name is the thread identity; the project title is
+            // context. A nameless agent borrows the project title (no duplicate).
+            let botName = name?.isEmpty == false ? name : nil
+            let project = title?.isEmpty == false ? title : nil
             return AgentThread(
                 id: id,
-                title: JSONLParsers.clean(
-                    (title?.isEmpty == false ? title : nil)
-                        ?? (name?.isEmpty == false ? name : nil)
-                        ?? "Agent"),
+                title: JSONLParsers.clean(botName ?? project ?? "Agent"),
                 lastActivity: activityMs
                     .map { Date(timeIntervalSince1970: $0 / 1000) } ?? .distantPast,
-                subtitle: name,
+                subtitle: botName != nil ? project : nil,
                 cwd: nil,
                 isWaitingOnYou: row["awaitingUserResponse"] is [String: Any])
         }

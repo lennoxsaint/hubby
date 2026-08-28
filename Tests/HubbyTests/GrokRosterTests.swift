@@ -28,7 +28,8 @@ final class GrokRosterTests: XCTestCase {
            "awaitingUserResponse":{"tabId":"box","reason":"Tick the checkbox","since":1786900000000}},
           {"id":"hidden","name":"Ghost","title":"Hidden","lastActivityAt":1787100000000,
            "isHiddenFromSidebar":true},
-          {"id":"untitled","name":"Nameless","title":"","lastActivityAt":1786800000000}
+          {"id":"untitled","name":"Nameless","title":"","lastActivityAt":1786800000000},
+          {"id":"nameless","name":"","title":"Solo Project","lastActivityAt":1786700000000}
         ]}}
         """
 
@@ -36,12 +37,16 @@ final class GrokRosterTests: XCTestCase {
         let threads = GrokRoster.parse(Data(roster.utf8))
         // Hidden agents are dropped; awaiting-user sorts first despite
         // being less recent.
-        XCTAssertEqual(threads.map(\.id), ["needs-you", "idle-1", "untitled"])
+        XCTAssertEqual(threads.map(\.id), ["needs-you", "idle-1", "untitled", "nameless"])
         XCTAssertTrue(threads[0].isWaitingOnYou)
         XCTAssertFalse(threads[1].isWaitingOnYou)
-        XCTAssertEqual(threads[0].title, "Jobs")
-        XCTAssertEqual(threads[0].subtitle, "Jamie")
-        XCTAssertEqual(threads[2].title, "Nameless") // empty title → agent name
+        // The bot's name is the thread title; the project is the subtitle.
+        XCTAssertEqual(threads[0].title, "Jamie")
+        XCTAssertEqual(threads[0].subtitle, "Jobs")
+        XCTAssertEqual(threads[2].title, "Nameless")
+        XCTAssertNil(threads[2].subtitle) // empty project → no subtitle
+        XCTAssertEqual(threads[3].title, "Solo Project") // no name → project title
+        XCTAssertNil(threads[3].subtitle) // …and it isn't duplicated below
     }
 
     func testRosterParseGarbage() {
