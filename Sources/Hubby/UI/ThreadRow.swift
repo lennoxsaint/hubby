@@ -6,11 +6,6 @@ import SwiftUI
 struct ThreadRow: View {
     let thread: AgentThread
     let onTap: () -> Void
-    /// Reports this thread's id after a hover dwell (nil on exit) so the
-    /// hub can float the recap card by the row.
-    var onRecap: (String?) -> Void = { _ in }
-
-    @State private var recapTask: Task<Void, Never>?
 
     var body: some View {
         Button(action: onTap) {
@@ -37,22 +32,12 @@ struct ThreadRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Jump to this thread")
+        // No .help here: the tooltip's own tracking swallowed the row's
+        // hover events in this borderless panel, killing the recap dwell.
         // Rows always publish their bounds; the hub only reads the hovered
         // one's. 500ms dwell — long enough to mean "tell me more".
         .anchorPreference(key: RecapAnchorKey.self, value: .bounds) {
             [thread.id: $0]
-        }
-        .onHover { hovering in
-            recapTask?.cancel()
-            if hovering {
-                recapTask = Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(500))
-                    if !Task.isCancelled { onRecap(thread.id) }
-                }
-            } else {
-                onRecap(nil)
-            }
         }
     }
 
@@ -62,12 +47,12 @@ struct ThreadRow: View {
         case .generating:
             SpinnerArc()
         case .waitingOnYou:
-            PulsingDot(color: .orange)
+            PulsingDot(color: HubbyGlass.needsYou)
         case .finishedUnread:
             // Blue owns "new result you haven't looked at".
             Circle().fill(HubbyGlass.unread).frame(width: 7, height: 7)
         case .active:
-            Circle().fill(.white.opacity(0.5)).frame(width: 6, height: 6)
+            Circle().fill(.black.opacity(0.4)).frame(width: 6, height: 6)
         case .idle:
             Circle().fill(Color.secondary.opacity(0.4)).frame(width: 6, height: 6)
         }
@@ -81,7 +66,7 @@ struct SpinnerArc: View {
     var body: some View {
         Circle()
             .trim(from: 0, to: 0.72)
-            .stroke(.green, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+            .stroke(HubbyGlass.running, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
             .frame(width: 8, height: 8)
             .rotationEffect(.degrees(spinning ? 360 : 0))
             .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: spinning)

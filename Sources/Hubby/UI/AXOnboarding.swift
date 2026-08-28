@@ -56,7 +56,7 @@ struct AXOnboardingCard: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(hex: 0x14141C).opacity(0.98)))
+                .fill(Color(hex: 0xFCF3F5).opacity(0.98)))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(HubbyGlass.hairline, lineWidth: 0.5))
@@ -64,6 +64,6 @@ struct AXOnboardingCard: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(HubbyGlass.accent.opacity(0.35), lineWidth: 1)
                 .blur(radius: 0.6))
-        .shadow(color: .black.opacity(0.5), radius: 10, y: 4)
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
     }
 }

@@ -24,26 +24,32 @@ struct ClaudeCodeSource: AgentSource {
     var watchedPaths: [URL] { [projectsDir] }
 
     /// Claude Code runs inside whatever terminal the user prefers; activate
-    /// the first one actually running rather than blindly launching
-    /// Terminal.app into a blank window.
+    /// one that is actually running rather than blindly launching
+    /// Terminal.app into a blank window. ghostty leads — it's the house
+    /// terminal here.
     private static let terminalBundleIDs = [
-        "com.googlecode.iterm2", "com.mitchellh.ghostty", "com.github.wez.wezterm",
+        "com.mitchellh.ghostty", "com.googlecode.iterm2", "com.github.wez.wezterm",
         "org.alacritty", "dev.warp.Warp-Stable", "com.apple.Terminal",
         "com.microsoft.VSCode",
     ]
 
-    /// Land on the exact terminal/editor window when the Accessibility
-    /// grant allows (windows are titled after the session's cwd); otherwise
-    /// fall back to the first running terminal — and admit a better landing
-    /// exists so the UI can offer the grant.
+    /// Land on the exact terminal tab when the Accessibility grant allows
+    /// (native tabs are separate AX windows). The strongest signal is the
+    /// session's `aiTitle` slug — Claude Code writes it into the session
+    /// file AND sets the terminal tab title to it; cwd and thread title
+    /// back it up. Without the grant, fall back to activating a running
+    /// terminal — and admit a better landing exists so the UI can offer
+    /// the grant. Never launch anything.
     func jump(to thread: AgentThread?) -> JumpResolution {
-        if let thread, WindowLocator.isTrusted,
-           WindowLocator.raiseWindow(bundleIDs: Self.terminalBundleIDs, scorer: {
-               WindowLocator.score(
-                   windowTitle: $0, cwd: thread.cwd, threadTitle: thread.title,
-                   hints: ["claude"])
-           }) {
-            return .exactThread
+        if let thread, WindowLocator.isTrusted {
+            let slug = tabSlug(forSessionFile: thread.id)
+            if WindowLocator.raiseWindow(bundleIDs: Self.terminalBundleIDs, scorer: {
+                WindowLocator.score(
+                    windowTitle: $0, cwd: thread.cwd, threadTitle: thread.title,
+                    slug: slug, hints: ["claude"])
+            }) {
+                return .exactThread
+            }
         }
         let fallback = activateFirstRunningTerminal()
         if thread != nil, !WindowLocator.isTrusted, fallback != .failed {
@@ -52,15 +58,29 @@ struct ClaudeCodeSource: AgentSource {
         return fallback
     }
 
+    /// The session's `aiTitle` — the slug Claude Code titles its terminal
+    /// tab with. Read on demand at jump time (one tail read); thread.id is
+    /// the session file's name, found back via the same listing fetch uses.
+    private func tabSlug(forSessionFile filename: String) -> String? {
+        guard let file = recentSessionFiles()
+            .first(where: { $0.url.lastPathComponent == filename }),
+            let tail = FileReading.tail(of: file.url, bytes: Self.tailBytes)
+        else { return nil }
+        return JSONLParsers.claudeCodeSlug(fromTail: tail)
+    }
+
+    /// Activation only — a jump must never open apps or create windows.
+    /// `NSRunningApplication.activate()`'s return value is unreliable, so
+    /// finding a running terminal counts as landing.
     private func activateFirstRunningTerminal() -> JumpResolution {
         let running = NSWorkspace.shared.runningApplications
         for bundleID in Self.terminalBundleIDs {
-            if let app = running.first(where: { $0.bundleIdentifier == bundleID }),
-               app.activate() {
+            if let app = running.first(where: { $0.bundleIdentifier == bundleID }) {
+                app.activate()
                 return .window
             }
         }
-        return activateApp() ? .appActivated : .failed
+        return .failed
     }
 
     // Claude Code runs inside a terminal, so a running Terminal.app proves

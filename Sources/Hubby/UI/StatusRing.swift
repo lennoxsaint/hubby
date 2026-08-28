@@ -38,7 +38,7 @@ struct SegmentedStatusRing: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(.white.opacity(0.12), lineWidth: lineWidth)
+                .stroke(.black.opacity(0.10), lineWidth: lineWidth)
             ForEach(Array(slices.enumerated()), id: \.offset) { _, slice in
                 Circle()
                     .trim(from: slice.start, to: slice.end)
@@ -75,21 +75,3 @@ struct SegmentedStatusRing: View {
     }
 }
 
-/// The one number that matters: how many threads want the human, capped at
-/// "9+" so the badge can never grow stale-looking or oversized.
-struct AttentionPill: View {
-    let count: Int
-    /// Orange when anything is blocked on the human, else unread blue.
-    var urgent: Bool = false
-
-    var body: some View {
-        Text(count > 9 ? "9+" : "\(count)")
-            .font(.system(size: 9, weight: .bold, design: .rounded))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 4.5)
-            .padding(.vertical, 1.5)
-            .background(Capsule().fill(urgent ? HubbyGlass.needsYou : HubbyGlass.unread))
-            .overlay(Capsule().strokeBorder(.black.opacity(0.35), lineWidth: 0.5))
-            .allowsHitTesting(false)
-    }
-}

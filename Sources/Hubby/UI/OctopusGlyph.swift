@@ -7,29 +7,31 @@ import AppKit
 /// sources, so the artwork is duplicated there by design).
 @MainActor
 enum OctopusGlyph {
-    /// Status-item image: black-on-clear template, so the system tints it
-    /// for light/dark menu bars automatically.
+    /// Status-item image: the blush-pink octopus, deliberately NOT a
+    /// template — Hubby keeps its color in the menu bar on both light and
+    /// dark bars (the punched-out eyes read against either).
     static func menuBarImage() -> NSImage {
         let size: CGFloat = 18
         let image = NSImage(size: NSSize(width: size, height: size))
         image.lockFocus()
         draw(silhouetteIn: NSRect(x: 0, y: 0, width: size, height: size)
-            .insetBy(dx: 0.5, dy: 0.5))
+            .insetBy(dx: 0.5, dy: 0.5),
+            color: NSColor(calibratedRed: 0.91, green: 0.62, blue: 0.69, alpha: 1))
         image.unlockFocus()
-        image.isTemplate = true
+        image.isTemplate = false
         return image
     }
 
     /// Fill `rect` with the simplified silhouette. Only alpha matters —
     /// template rendering discards color, and the eye cutouts read against
     /// any menu bar tint.
-    static func draw(silhouetteIn rect: NSRect) {
+    static func draw(silhouetteIn rect: NSRect, color: NSColor = .black) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let s = min(rect.width, rect.height)
         func x(_ v: CGFloat) -> CGFloat { rect.minX + v * s }
         func y(_ v: CGFloat) -> CGFloat { rect.minY + v * s }
 
-        ctx.setFillColor(NSColor.black.cgColor)
+        ctx.setFillColor(color.cgColor)
 
         // Chubby head dome.
         ctx.addEllipse(in: CGRect(x: x(0.17), y: y(0.32), width: 0.66 * s, height: 0.60 * s))

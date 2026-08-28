@@ -22,9 +22,10 @@ struct RootView: View {
                 if panel.isExpanded {
                     ExpandedHub(
                         snapshots: orderedSnapshots,
-                        // A deliberate swipe means "show me this app":
-                        // arrive with its threads already open.
-                        initialOpenApp: panel.pinnedTopID,
+                        // The hub always arrives with the top app's threads
+                        // already open — a swipe-pick decides which app that
+                        // is; otherwise it's the most active one.
+                        initialOpenApp: panel.pinnedTopID ?? orderedSnapshots.first?.id,
                         onJump: handleJump,
                         onCollapse: {
                             withAnimation(HubbyAnim.morph) { panel.setExpanded(false) }
@@ -44,19 +45,10 @@ struct RootView: View {
                             .transition(.opacity.combined(with: .scale(scale: 0.96)))
                         }
                     }
-                    // Light sweep: one shimmer across the fresh glass, then
-                    // gone. Lives inside the chrome-clipped content.
-                    .overlay { LightSweep() }
                     .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
                 } else {
-                    CollapsedOrb(
-                        snapshots: orderedSnapshots,
-                        counts: RingCounts(
-                            running: store.totalRunning,
-                            needsYou: store.totalNeedsYou,
-                            unread: store.totalUnread,
-                            total: store.totalThreads))
-                    .transition(.spinFade)
+                    CollapsedOrb(snapshots: orderedSnapshots)
+                        .transition(.spinFade)
                 }
             }
             .modifier(Shake(shakes: CGFloat(jumpFailures)))
@@ -88,9 +80,9 @@ struct RootView: View {
             width: HubbyMetrics.panelSize.width,
             height: HubbyMetrics.panelSize.height,
             alignment: .topLeading)
-        // The ink glass is one committed look: resolve every semantic color
-        // for dark so light-mode desktops don't get gray-on-black text.
-        .environment(\.colorScheme, .dark)
+        // The blush glass is one committed look: resolve every semantic color
+        // for light so dark-mode desktops don't get white-on-white text.
+        .environment(\.colorScheme, .light)
         .onPreferenceChange(HubHeightKey.self) { panel.setContentHeight($0) }
     }
 
@@ -162,29 +154,7 @@ private struct MorphChrome: ViewModifier, Animatable {
                 shape.strokeBorder(HubbyGlass.rim, lineWidth: 1)
                     .blur(radius: 0.6)
                     .allowsHitTesting(false))
-            .shadow(color: .black.opacity(0.45), radius: 16, y: 6)
-    }
-}
-
-/// A single band of light that sweeps the glass once when the hub appears
-/// and parks itself offscreen. Fresh insertion per expand re-fires it.
-private struct LightSweep: View {
-    @State private var travel = false
-
-    var body: some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            LinearGradient(
-                colors: [.clear, .white.opacity(0.12), .clear],
-                startPoint: .leading, endPoint: .trailing)
-                .frame(width: width * 0.45)
-                .rotationEffect(.degrees(14))
-                .offset(x: travel ? width * 1.3 : -width * 0.6)
-                .onAppear {
-                    withAnimation(.easeOut(duration: 0.55).delay(0.12)) { travel = true }
-                }
-        }
-        .allowsHitTesting(false)
+            .shadow(color: .black.opacity(0.22), radius: 16, y: 6)
     }
 }
 

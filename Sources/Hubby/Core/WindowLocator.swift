@@ -73,11 +73,18 @@ enum WindowLocator {
     ///   +2 the thread title's leading words appear
     ///   +1 an adapter hint token ("claude", "codex") appears
     static func score(
-        windowTitle: String, cwd: String?, threadTitle: String?, hints: [String] = []
+        windowTitle: String, cwd: String?, threadTitle: String?,
+        slug: String? = nil, hints: [String] = []
     ) -> Int {
         let title = windowTitle.lowercased()
         guard !title.isEmpty else { return 0 }
         var score = 0
+
+        // The tab slug is written by the agent itself into both the session
+        // file and the tab title — a match is near-certain identity.
+        if let slug = slug?.lowercased(), !slug.isEmpty, title.contains(slug) {
+            score += 8
+        }
 
         if let cwd, !cwd.isEmpty {
             let url = URL(fileURLWithPath: cwd)

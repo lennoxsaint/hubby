@@ -12,19 +12,22 @@ struct RecapAnchorKey: PreferenceKey {
     }
 }
 
-/// The cute little "what did this thread do" window: an ink-glass mini
-/// panel floating by the hovered row. Display-only — it never takes hits,
-/// so it can't perturb the panel's hit-test gating.
+/// The hover card answers exactly one question in plain words: what just
+/// happened, and is it finished or does it need you? A verdict line, then
+/// at most one sentence of the thread's last message. Display-only — it
+/// never takes hits, so it can't perturb the panel's hit-test gating.
 struct RecapCard: View {
     let thread: AgentThread
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                Circle().fill(statusColor).frame(width: 6, height: 6)
-                Text(statusWord)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(statusColor)
+                Text(verdict.symbol)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(verdict.color)
+                Text(verdict.words)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(verdict.color)
                 Spacer(minLength: 12)
                 Text(relativeTimeFormatter.localizedString(
                     for: thread.lastActivity, relativeTo: Date()))
@@ -32,54 +35,66 @@ struct RecapCard: View {
                     .foregroundStyle(.tertiary)
             }
             Text(thread.title)
-                .font(.system(.callout, design: .rounded).weight(.semibold))
+                .font(.system(size: 11, design: .rounded).weight(.medium))
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
-            if let recap = thread.recap {
-                Text(recap)
+            if let sentence = thread.recap.flatMap({ Recap.firstSentence(of: $0) }) {
+                Text(sentence)
                     .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(4)
+                    .foregroundStyle(.primary.opacity(0.75))
+                    .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-            } else if let subtitle = thread.subtitle {
-                // No recap from this source: at least say where it lives.
-                Text(subtitle)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
             }
         }
         .padding(11)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(hex: 0x14141C).opacity(0.98)))
+                .fill(Color(hex: 0xFCF3F5).opacity(0.98)))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(HubbyGlass.hairline, lineWidth: 0.5))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(HubbyGlass.accent.opacity(0.3), lineWidth: 1)
+                .strokeBorder(HubbyGlass.accent.opacity(0.35), lineWidth: 1)
                 .blur(radius: 0.6))
-        .shadow(color: .black.opacity(0.5), radius: 10, y: 4)
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
         .allowsHitTesting(false)
     }
 
-    private var statusWord: String {
+    private var verdict: (symbol: String, words: String, color: Color) {
         switch thread.status() {
-        case .generating: "generating"
-        case .waitingOnYou: "needs you"
-        case .finishedUnread: "new result"
-        case .active: "active"
-        case .idle: "idle"
+        case .generating:
+            ("●", "Still working…", HubbyGlass.running)
+        case .waitingOnYou:
+            ("⚠", "Waiting on you", HubbyGlass.needsYou)
+        case .finishedUnread:
+            ("✓", "Finished — nothing needed", HubbyGlass.unread)
+        case .active, .idle:
+            ("✓", "Finished", Color.black.opacity(0.55))
         }
     }
+}
 
-    private var statusColor: Color {
-        switch thread.status() {
-        case .generating: HubbyGlass.running
-        case .waitingOnYou: HubbyGlass.needsYou
-        case .finishedUnread: HubbyGlass.unread
-        case .active: .white.opacity(0.6)
-        case .idle: .secondary
+/// Pure text helpers for recap display, unit-testable without a view.
+enum Recap {
+    /// The first sentence of a message, trimmed to ~90 characters. Falls
+    /// back to a plain prefix when no sentence boundary appears early.
+    static func firstSentence(of text: String, limit: Int = 90) -> String? {
+        let flattened = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !flattened.isEmpty else { return nil }
+        var sentence = flattened
+        for terminator in [". ", "! ", "? "] {
+            if let range = flattened.range(of: terminator),
+               flattened.distance(from: flattened.startIndex, to: range.lowerBound) >= 12 {
+                let candidate = String(flattened[..<range.lowerBound]) + String(terminator.first!)
+                if candidate.count < sentence.count { sentence = candidate }
+            }
         }
+        if sentence.count > limit {
+            sentence = String(sentence.prefix(limit)).trimmingCharacters(in: .whitespaces) + "…"
+        }
+        return sentence
     }
 }

@@ -1,64 +1,54 @@
 import SwiftUI
 
-/// The resting state's content: a little 3D-ish deck of the most recently
-/// active apps' icons, ringed by the machine-wide status arcs. Chrome
-/// (glass circle, border, shadow) is drawn by the shared MorphSurface so
-/// the shape morphs continuously.
+/// The resting state's content: all six app icons arranged as a little
+/// flower inside the blush glass, each carrying a small blue badge with its
+/// unread-finished count. The swipe gesture rotates which app sits at
+/// twelve o'clock (that app leads the hub). Chrome (glass circle, border,
+/// shadow) is drawn by the shared MorphSurface so the shape morphs
+/// continuously. No pills, chips, or rings — the badges are the signal.
 struct CollapsedOrb: View {
     let snapshots: [AgentSnapshot]
-    /// Machine-wide totals: running / needs-you / unread over all threads.
-    let counts: RingCounts
 
-    /// Fan shows the store's order (recency), frontmost = most recent.
-    private var featured: [AgentSnapshot] {
-        Array(snapshots.prefix(Self.fanCount))
-    }
-
-    private static let fanCount = 3
+    private static let iconSize: CGFloat = 19
+    private static let ringRadius: CGFloat = 21
 
     var body: some View {
         ZStack {
-            iconFan
-
-            // The orb's rim is the badge: proportional arcs for running,
-            // needs-you, and unread — legible however many threads exist.
-            if !counts.isEmpty {
-                SegmentedStatusRing(counts: counts, lineWidth: 2.5)
-                    .padding(3)
-            }
-
-            if snapshots.count > Self.fanCount {
-                Text("+\(snapshots.count - Self.fanCount)")
-                    .font(.system(size: 8, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .padding(3)
-                    .background(Circle().fill(.black.opacity(0.45)))
-                    .offset(x: HubbyMetrics.orbDiameter / 2 - 12,
-                            y: HubbyMetrics.orbDiameter / 2 - 12)
-            }
-
-            // "Never leave an agent hanging": the one number that wants the
-            // human — blocked agents + unread results, capped at 9+.
-            if counts.attention > 0 {
-                AttentionPill(count: counts.attention, urgent: counts.needsYou > 0)
-                    .offset(x: HubbyMetrics.orbDiameter / 2 - 10,
-                            y: -HubbyMetrics.orbDiameter / 2 + 10)
+            ForEach(Array(snapshots.prefix(6).enumerated()), id: \.element.id) { index, snapshot in
+                // First app at twelve o'clock, the rest clockwise.
+                let angle = Double(index) * .pi / 3 - .pi / 2
+                AppIconView(
+                    info: snapshot.info,
+                    size: Self.iconSize,
+                    dimmed: !snapshot.isRunning && snapshot.threads.isEmpty)
+                .overlay(alignment: .topTrailing) {
+                    UnreadBadge(count: snapshot.unreadCount)
+                        .offset(x: 4, y: -4)
+                }
+                .offset(
+                    x: Self.ringRadius * cos(angle),
+                    y: Self.ringRadius * sin(angle))
+                .shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
             }
         }
         .frame(width: HubbyMetrics.orbDiameter, height: HubbyMetrics.orbDiameter)
     }
+}
 
-    private var iconFan: some View {
-        ZStack {
-            ForEach(Array(featured.enumerated().reversed()), id: \.element.id) { index, snapshot in
-                AppIconView(
-                    info: snapshot.info,
-                    size: 26,
-                    dimmed: !snapshot.isRunning && snapshot.threads.isEmpty)
-                .rotationEffect(.degrees(Double(index) * 9 - 9))
-                .offset(x: CGFloat(index) * 8 - 8, y: CGFloat(index) * 2 - 2)
-                .shadow(color: .black.opacity(0.25), radius: 1.5, y: 1)
-            }
+/// A small blue circle with the count of finished-but-unread threads,
+/// pinned to an app icon's top-right corner. Hidden at zero.
+struct UnreadBadge: View {
+    let count: Int
+
+    var body: some View {
+        if count > 0 {
+            Text(count > 9 ? "9+" : "\(count)")
+                .font(.system(size: 7.5, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(minWidth: 11, minHeight: 11)
+                .background(Circle().fill(HubbyGlass.unread))
+                .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 0.5))
+                .transition(.scale.combined(with: .opacity))
         }
     }
 }

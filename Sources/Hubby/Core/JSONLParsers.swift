@@ -72,6 +72,19 @@ enum JSONLParsers {
         return nil
     }
 
+    /// The `aiTitle` slug from a Claude Code session tail — the exact
+    /// string Claude Code sets the terminal tab title to, which makes it
+    /// the strongest window-matching signal a jump can hold.
+    static func claudeCodeSlug(fromTail data: Data) -> String? {
+        for line in jsonLines(in: data).reversed() {
+            guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else {
+                continue
+            }
+            if let slug = obj["aiTitle"] as? String, !slug.isEmpty { return slug }
+        }
+        return nil
+    }
+
     /// Working directory recorded in a Claude Code session head, if any.
     static func claudeCodeCwd(fromHead data: Data) -> String? {
         for line in jsonLines(in: data) {

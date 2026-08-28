@@ -72,6 +72,14 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
   even when they land on our own window — AppKit only filters physical
   own-window events. The monitor must drop events inside the visible content
   rect or every automation/accessibility-tool click collapses the hub.
+- SwiftUI `.onHover`/`.onContinuousHover`/`.help` on rows inside this
+  borderless panel silently stop firing depending on key-window state —
+  headers sometimes worked while thread rows never did. Hover is therefore
+  driven by a 120ms poller in ExpandedHub (`hoverTick`) that hit-tests
+  `NSEvent.mouseLocation` against the rows' `RecapAnchorKey` anchors. Two
+  rules keep it sane: an accordion hover-open disarms until the cursor
+  physically moves (rows shift under a stationary cursor and would cascade
+  opens), and the recap card needs a 4-tick (~480ms) dwell.
 - TCC changes (granting Accessibility) only take full effect for the AX APIs
   after the app relaunches — `AXIsProcessTrusted` may flip live while window
   enumeration still fails. Also: a binary launched from a terminal shell

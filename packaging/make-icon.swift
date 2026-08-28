@@ -1,5 +1,5 @@
-// Renders Hubby's app icon: the chubby octopus mascot on ink-black glass
-// with a violet rim light — one head (the hub), arms holding glowing
+// Renders Hubby's app icon: the chubby octopus mascot on blush-frost glass
+// with a rose-gold rim light — one head (the hub), arms holding glowing
 // threads in the status colors. The mascot's silhouette twin lives in
 // Sources/Hubby/UI/OctopusGlyph.swift; this script can't import app
 // sources, so the artwork is duplicated by design.
@@ -14,9 +14,9 @@ guard args.count == 2 else {
 let outDir = URL(fileURLWithPath: args[1])
 try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
-let violet = NSColor(calibratedRed: 0.557, green: 0.486, blue: 1.0, alpha: 1)
-let violetDeep = NSColor(calibratedRed: 0.42, green: 0.35, blue: 0.85, alpha: 1)
-let ink = NSColor(calibratedRed: 0.078, green: 0.078, blue: 0.11, alpha: 1)
+let violet = NSColor(calibratedRed: 0.902, green: 0.549, blue: 0.627, alpha: 1)
+let violetDeep = NSColor(calibratedRed: 0.761, green: 0.400, blue: 0.494, alpha: 1)
+let ink = NSColor(calibratedRed: 0.30, green: 0.16, blue: 0.20, alpha: 1)
 
 /// A tapered arm: a curve stroked round-capped, thick at the shoulder.
 func strokeArm(
@@ -43,17 +43,17 @@ func draw(size: CGFloat) -> NSImage {
     let rect = NSRect(x: inset, y: inset, width: s - inset * 2, height: s - inset * 2)
     let squircle = NSBezierPath(roundedRect: rect, xRadius: s * 0.21, yRadius: s * 0.21)
 
-    // Background: ink-black glass.
+    // Background: blush-frost glass.
     NSGradient(colors: [
-        NSColor(calibratedRed: 0.063, green: 0.063, blue: 0.094, alpha: 1),
-        NSColor(calibratedRed: 0.024, green: 0.024, blue: 0.035, alpha: 1),
+        NSColor(calibratedRed: 0.984, green: 0.945, blue: 0.953, alpha: 1),
+        NSColor(calibratedRed: 0.945, green: 0.855, blue: 0.882, alpha: 1),
     ])!.draw(in: squircle, angle: -70)
 
     squircle.addClip()
 
     // Soft glass sheen up top.
     NSGradient(colors: [
-        NSColor.white.withAlphaComponent(0.12),
+        NSColor.white.withAlphaComponent(0.55),
         NSColor.white.withAlphaComponent(0.0),
     ])!.draw(in: NSRect(x: 0, y: s * 0.6, width: s, height: s * 0.4), angle: -90)
 
@@ -154,7 +154,7 @@ func draw(size: CGFloat) -> NSImage {
                 x: bx - headRect.width * 0.07, y: headRect.minY + headRect.height * 0.24,
                 width: headRect.width * 0.14, height: headRect.height * 0.08))
             ctx.setFillColor(NSColor(
-                calibratedRed: 1.0, green: 0.55, blue: 0.65, alpha: 0.45).cgColor)
+                calibratedRed: 0.85, green: 0.30, blue: 0.42, alpha: 0.5).cgColor)
             ctx.fillPath()
         }
         // A tiny content smile.

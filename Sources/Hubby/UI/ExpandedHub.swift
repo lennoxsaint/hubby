@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Reports the hub's natural height so the panel can hug its content.
@@ -25,6 +26,17 @@ struct ExpandedHub: View {
     @State private var revealed = false
     /// Thread id whose recap card is showing (500ms hover dwell).
     @State private var recapID: String?
+    /// Poller-driven hover: the anchor key under the cursor + dwell ticks.
+    /// NSTrackingArea/onHover proved unreliable in this borderless panel
+    /// (silent no-fire depending on key status), so hover is derived from
+    /// the mouse position against the rows' published anchors instead.
+    @State private var hoverKey: String?
+    @State private var hoverTicks = 0
+    /// Where the cursor was when hover last opened an accordion. Opening
+    /// shifts rows under a stationary cursor; requiring real movement
+    /// before the next hover-open stops the open-cascade churn.
+    @State private var lastHoverOpenPoint: CGPoint?
+    private let hoverTimer = Timer.publish(every: 0.12, on: .main, in: .common).autoconnect()
 
     /// Seeding works because the hub view is freshly inserted on every
     /// expand — `State(initialValue:)` is honored each time.
@@ -48,8 +60,6 @@ struct ExpandedHub: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider().opacity(0.4).padding(.horizontal, 14)
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(Array(snapshots.enumerated()), id: \.element.id) { index, snapshot in
@@ -61,15 +71,7 @@ struct ExpandedHub: View {
                                     openApp = openApp == snapshot.id ? nil : snapshot.id
                                 }
                             },
-                            onHoverOpen: {
-                                withAnimation(.spring(duration: 0.3)) {
-                                    openApp = snapshot.id // accordion: siblings close
-                                }
-                            },
-                            onJump: onJump,
-                            onRecap: { id in
-                                withAnimation(.easeOut(duration: 0.15)) { recapID = id }
-                            })
+                            onJump: onJump)
                         // Cascade: rows fall in one after another on expand.
                         // Animation is `value:`-scoped so hover, accordion,
                         // and reorders stay untouched; no per-row transition
@@ -97,6 +99,19 @@ struct ExpandedHub: View {
             .scrollBounceBehavior(.basedOnSize)
             .scrollIndicators(.hidden)
             .frame(height: max(scrollHeight, 44))
+            // A hard mid-row cut at the viewport edge reads as broken glass;
+            // wash the last stretch out with the glass color so it reads as
+            // "more below". An overlay, NOT .mask/.clipped — those killed
+            // the thread rows' hover tracking (see AGENTS.md).
+            .overlay(alignment: .bottom) {
+                if isScrollable {
+                    LinearGradient(
+                        colors: [HubbyGlass.base.opacity(0), HubbyGlass.base],
+                        startPoint: .top, endPoint: .bottom)
+                        .frame(height: 30)
+                        .allowsHitTesting(false)
+                }
+            }
             .overlay(alignment: .topTrailing) { scroller }
             .onPreferenceChange(ScrollOffsetKey.self) { offset in
                 if offset != scrollOffset { recapID = nil } // anchor moved
@@ -111,19 +126,80 @@ struct ExpandedHub: View {
                     }
                 }
             }
+            wordmark
         }
         .onPreferenceChange(RowsHeightKey.self) { rowsHeight = $0 }
-        .onAppear { revealed = true }
+        .onAppear {
+            if ProcessInfo.processInfo.environment["HUBBY_NOCASCADE"] != nil {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { revealed = true }
+            } else {
+                revealed = true
+            }
+        }
         .onChange(of: openApp) { recapID = nil } // its row is gone/moved
         .frame(width: HubbyMetrics.hubWidth)
         .overlayPreferenceValue(RecapAnchorKey.self) { anchors in
             recapOverlay(anchors: anchors)
+                .background(GeometryReader { proxy in
+                    Color.clear.onReceive(hoverTimer) { _ in
+                        hoverTick(anchors: anchors, proxy: proxy)
+                    }
+                })
         }
         // Chrome (material, border, shadow) lives in MorphSurface so orb and
         // hub share one continuously morphing shape.
         .background(GeometryReader { proxy in
             Color.clear.preference(key: HubHeightKey.self, value: proxy.size.height)
         })
+    }
+
+    /// The cursor in hub-content coordinates (top-left origin), or nil
+    /// when it is outside the panel's visible content.
+    private func mouseInHub() -> CGPoint? {
+        guard let panel = NSApp.windows.first(where: { $0 is FloatingPanel && $0.isVisible })
+        else { return nil }
+        let mouse = NSEvent.mouseLocation
+        let local = CGPoint(
+            x: mouse.x - panel.frame.minX - HubbyMetrics.panelPadding,
+            y: (panel.frame.maxY - mouse.y) - HubbyMetrics.panelPadding)
+        guard local.x >= 0, local.x <= HubbyMetrics.hubWidth, local.y >= 0 else { return nil }
+        return local
+    }
+
+    /// One 120ms hover tick: resolve the row under the cursor and drive the
+    /// accordion (2 ticks ≈ 240ms) and the recap card (4 ticks ≈ 480ms).
+    private func hoverTick(anchors: [String: Anchor<CGRect>], proxy: GeometryProxy) {
+        let point = mouseInHub()
+        let key = point.flatMap { p in
+            anchors.first(where: { proxy[$0.value].contains(p) })?.key
+        }
+        if ProcessInfo.processInfo.environment["HUBBY_DEBUG"] != nil {
+            FileHandle.standardError.write(Data(
+                "tick p=\(point.map { "\(Int($0.x)),\(Int($0.y))" } ?? "-") key=\(key ?? "-") ticks=\(hoverTicks)\n".utf8))
+        }
+        if key != hoverKey {
+            hoverKey = key
+            hoverTicks = 0
+            if recapID != nil, key != recapID {
+                withAnimation(.easeOut(duration: 0.15)) { recapID = nil }
+            }
+            return
+        }
+        hoverTicks += 1
+        guard let key else { return }
+        if let appID = key.hasPrefix("app:") ? String(key.dropFirst(4)) : nil {
+            let moved = lastHoverOpenPoint.map {
+                abs(point!.x - $0.x) > 6 || abs(point!.y - $0.y) > 6
+            } ?? true
+            if hoverTicks == 2, openApp != appID, moved {
+                lastHoverOpenPoint = point
+                withAnimation(.spring(duration: 0.3)) { openApp = appID }
+            }
+        } else if hoverTicks >= 4, recapID != key {
+            withAnimation(.easeOut(duration: 0.15)) { recapID = key }
+        }
     }
 
     /// The floating recap card, anchored by the hovered row's reported
@@ -162,7 +238,7 @@ struct ExpandedHub: View {
             let travel = viewport - thumbHeight - 8
             let progress = min(max(scrollOffset / (rowsHeight - viewport), 0), 1)
             Capsule()
-                .fill(.white.opacity(0.35))
+                .fill(.black.opacity(0.28))
                 .frame(width: 3, height: thumbHeight)
                 .padding(.trailing, 3)
                 .offset(y: 4 + travel * progress)
@@ -171,18 +247,18 @@ struct ExpandedHub: View {
         }
     }
 
-    /// The whole header collapses the hub — no dedicated button needed
-    /// (clicking outside the panel collapses it too).
-    private var header: some View {
+    /// The signature: cursive "Hubby" at the bottom centre, subtle and
+    /// translucent. It doubles as the in-hub collapse control (clicking
+    /// outside the panel collapses too — there is no header).
+    private var wordmark: some View {
         Button(action: onCollapse) {
-            HStack {
-                Text("Hubby")
-                    .font(.system(.headline, design: .rounded).weight(.bold))
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .contentShape(Rectangle())
+            Text("Hubby")
+                .font(HubbyGlass.wordmark)
+                .foregroundStyle(.black.opacity(0.45))
+                .padding(.top, 1)
+                .padding(.bottom, 9)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Collapse to orb")
@@ -207,11 +283,7 @@ private struct AppRow: View {
     let snapshot: AgentSnapshot
     let isOpen: Bool
     let onToggle: () -> Void
-    let onHoverOpen: () -> Void
     let onJump: (AgentSnapshot, AgentThread?) -> Void
-    let onRecap: (String?) -> Void
-
-    @State private var hoverTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -259,15 +331,10 @@ private struct AppRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            // Hover reveals the drop-down after a short dwell; moving to a
-            // sibling row swaps the open one (accordion). Click still toggles.
-            .onHover { hovering in
-                hoverTask?.cancel()
-                guard hovering, !isOpen else { return }
-                hoverTask = Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(160))
-                    if !Task.isCancelled { onHoverOpen() }
-                }
+            // The hub's hover poller reads this anchor to open the
+            // drop-down on dwell (accordion); click still toggles.
+            .anchorPreference(key: RecapAnchorKey.self, value: .bounds) {
+                ["app:\(snapshot.id)": $0]
             }
 
             if isOpen {
@@ -276,7 +343,7 @@ private struct AppRow: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.white.opacity(isOpen ? 0.08 : 0)))
+                .fill(.black.opacity(isOpen ? 0.045 : 0)))
     }
 
     private var dropDown: some View {
@@ -299,10 +366,7 @@ private struct AppRow: View {
                 .buttonStyle(.plain)
             } else {
                 ForEach(snapshot.threads) { thread in
-                    ThreadRow(
-                        thread: thread,
-                        onTap: { onJump(snapshot, thread) },
-                        onRecap: onRecap)
+                    ThreadRow(thread: thread, onTap: { onJump(snapshot, thread) })
                 }
             }
         }

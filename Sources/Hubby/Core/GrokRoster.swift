@@ -63,8 +63,11 @@ enum GrokRoster {
                     .map { Date(timeIntervalSince1970: $0 / 1000) } ?? .distantPast,
                 subtitle: botName != nil ? project : nil,
                 cwd: nil,
-                // "Why is this agent blocked" is the best recap Grok offers.
+                // "Why is this agent blocked" beats everything; otherwise the
+                // roster's last-entry preview is what the agent last said.
                 recap: (awaiting?["reason"] as? String)
+                    .flatMap { $0.isEmpty ? nil : JSONLParsers.clean($0, limit: 200) }
+                    ?? ((row["lastEntry"] as? [String: Any])?["text"] as? String)
                     .flatMap { $0.isEmpty ? nil : JSONLParsers.clean($0, limit: 200) },
                 isWaitingOnYou: awaiting != nil)
         }

@@ -14,7 +14,8 @@ extension AgentAppInfo {
 }
 
 enum HubbyMetrics {
-    static let orbDiameter: CGFloat = 56
+    /// Big enough for the full six-icon flower with per-icon badges.
+    static let orbDiameter: CGFloat = 72
     static let hubWidth: CGFloat = 330
     /// The scrollable rows area is capped; the hub itself hugs its content.
     static let maxRowsHeight: CGFloat = 520
@@ -34,43 +35,47 @@ enum HubbyMetrics {
     }
 }
 
-/// The ink-glass identity: Hubby's own surface, not a system material.
-/// Near-opaque obsidian with a violet rim light — the same glass wraps the
-/// orb, the hub, and every floating card.
+/// The blush-frost identity: Hubby's own surface, not a system material.
+/// Mostly-white glass warmed with a blush tint and a rose-gold rim light —
+/// the same glass wraps the orb, the hub, and every floating card. Text on
+/// it is always dark (RootView forces the light color scheme).
 enum HubbyGlass {
-    /// Generating right now.
-    static let running = Color(hex: 0x34D27A)
+    /// Generating right now (darkened for the light glass).
+    static let running = Color(hex: 0x14985A)
     /// Blocked waiting on the human.
-    static let needsYou = Color.orange
+    static let needsYou = Color(hex: 0xD97706)
     /// Finished, not yet jumped to.
-    static let unread = Color(hex: 0x5AA2FF)
+    static let unread = Color(hex: 0x2F6FD0)
 
-    /// Hubby violet — the brand accent behind the rim light.
-    static let accent = Color(hex: 0x8E7CFF)
-    /// Obsidian surface; a hint of translucency keeps the desk-pet feel.
-    static let base = Color(hex: 0x0A0A0F).opacity(0.94)
+    /// Rose gold — the brand accent behind the rim light.
+    static let accent = Color(hex: 0xB76E79)
+    /// Blush frost surface; a hint of translucency keeps the desk-pet feel.
+    static let base = Color(hex: 0xF9EDF0).opacity(0.90)
     /// Opacity floor behind `base` so the desktop never bleeds through text.
-    static let floor = Color.black.opacity(0.62)
-    /// Inner 0.5pt glass edge.
-    static let hairline = Color.white.opacity(0.22)
+    static let floor = Color.white.opacity(0.62)
+    /// Inner 0.5pt glass edge — dark on light glass.
+    static let hairline = Color.black.opacity(0.10)
 
-    /// The colored rim light: accent circling the edge, brightest top-left.
+    /// The colored rim light: rose gold circling the edge, brightest top-left.
     static let rim = AngularGradient(
         gradient: Gradient(stops: [
-            .init(color: accent.opacity(0.85), location: 0),
-            .init(color: accent.opacity(0.12), location: 0.3),
-            .init(color: accent.opacity(0.35), location: 0.55),
-            .init(color: accent.opacity(0.12), location: 0.8),
-            .init(color: accent.opacity(0.85), location: 1),
+            .init(color: accent.opacity(0.80), location: 0),
+            .init(color: accent.opacity(0.15), location: 0.3),
+            .init(color: accent.opacity(0.40), location: 0.55),
+            .init(color: accent.opacity(0.15), location: 0.8),
+            .init(color: accent.opacity(0.80), location: 1),
         ]),
         center: .center,
         angle: .degrees(-125))
 
     /// Soft top-third light catch on the glass.
     static let sheen = LinearGradient(
-        colors: [Color.white.opacity(0.09), Color.white.opacity(0)],
+        colors: [Color.white.opacity(0.45), Color.white.opacity(0)],
         startPoint: .top,
         endPoint: .center)
+
+    /// The cursive wordmark at the hub's bottom centre ("running writing").
+    static let wordmark = Font.custom("SnellRoundhand-Bold", size: 16)
 }
 
 enum HubbyAnim {
