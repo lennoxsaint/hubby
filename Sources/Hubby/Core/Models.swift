@@ -15,11 +15,15 @@ struct AgentThread: Identifiable, Hashable {
     /// True when the source knows the agent is blocked waiting for the
     /// human (Grok Bot's `awaitingUserResponse`).
     var isWaitingOnYou: Bool = false
+    /// True when a generation finished and the user hasn't jumped to the
+    /// thread since. Set by `ReadStateStore.decorate`, never by adapters.
+    var isFinishedUnread: Bool = false
 
-    /// Spinner > needs-you > recently-touched > idle.
+    /// Spinner > needs-you > finished-unread > recently-touched > idle.
     func status(now: Date = Date()) -> ThreadStatus {
         if isGenerating { return .generating }
         if isWaitingOnYou { return .waitingOnYou }
+        if isFinishedUnread { return .finishedUnread }
         return now.timeIntervalSince(lastActivity) < 120 ? .active : .idle
     }
 }
@@ -27,6 +31,7 @@ struct AgentThread: Identifiable, Hashable {
 enum ThreadStatus {
     case generating
     case waitingOnYou
+    case finishedUnread
     case active
     case idle
 }
@@ -60,4 +65,6 @@ struct AgentSnapshot: Identifiable {
     var runningCount: Int { threads.filter { $0.status() == .generating }.count }
     /// Agents blocked waiting for the human (amber badge).
     var needsYouCount: Int { threads.filter { $0.status() == .waitingOnYou }.count }
+    /// Finished results the user hasn't jumped to yet (blue badge).
+    var unreadCount: Int { threads.filter { $0.status() == .finishedUnread }.count }
 }

@@ -16,6 +16,10 @@ struct RootView: View {
                     ExpandedHub(
                         snapshots: store.snapshots,
                         onJump: { snapshot, thread in
+                            // A click means "seen" even when the jump fails.
+                            if let thread {
+                                store.markRead(appID: snapshot.id, thread: thread)
+                            }
                             if store.source(for: snapshot.id)?.jump(to: thread) == true {
                                 withAnimation(HubbyAnim.morph) { panel.setExpanded(false) }
                             } else {

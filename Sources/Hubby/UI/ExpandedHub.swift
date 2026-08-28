@@ -278,8 +278,11 @@ struct ThreadRow: View {
             SpinnerArc()
         case .waitingOnYou:
             PulsingDot(color: .orange)
+        case .finishedUnread:
+            // Blue owns "new result you haven't looked at".
+            Circle().fill(HubbyGlass.unread).frame(width: 7, height: 7)
         case .active:
-            Circle().fill(.blue).frame(width: 6, height: 6)
+            Circle().fill(.white.opacity(0.5)).frame(width: 6, height: 6)
         case .idle:
             Circle().fill(Color.secondary.opacity(0.4)).frame(width: 6, height: 6)
         }

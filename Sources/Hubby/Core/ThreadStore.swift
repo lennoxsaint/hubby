@@ -9,6 +9,7 @@ final class ThreadStore: ObservableObject {
     @Published private(set) var snapshots: [AgentSnapshot] = []
 
     private let sources: [AgentSource]
+    private let readState = ReadStateStore()
     private let refreshInterval: TimeInterval
     private var timer: Timer?
     private var watcher: FileWatcher?
@@ -46,20 +47,30 @@ final class ThreadStore: ObservableObject {
         generation += 1
         let tick = generation
         Task.detached(priority: .utility) {
-            let fresh = Self.ordered(sources.map { $0.snapshot(runningBundleIDs: runningIDs) })
+            let raw = sources.map { $0.snapshot(runningBundleIDs: runningIDs) }
             await MainActor.run { [weak self] in
                 guard let self, self.generation == tick else { return }
-                self.snapshots = fresh
+                // Decoration is main-actor (it owns the read-state blob), and
+                // ordering runs after it so unread state can rank apps.
+                self.snapshots = Self.ordered(self.readState.decorate(raw))
             }
         }
     }
 
-    /// Shared ordering: generating first, then needs-you, then most recent
-    /// thread activity, then merely-running apps, then stable input order.
+    /// A click on a thread marks it read immediately, before any jump lands.
+    func markRead(appID: String, thread: AgentThread) {
+        readState.markRead(appID: appID, threadID: thread.id)
+        snapshots = Self.ordered(readState.decorate(snapshots))
+    }
+
+    /// Shared ordering: generating first, then needs-you, then unread
+    /// results, then most recent thread activity, then merely-running apps,
+    /// then stable input order.
     nonisolated static func ordered(_ snapshots: [AgentSnapshot]) -> [AgentSnapshot] {
-        func key(_ snapshot: AgentSnapshot, _ offset: Int) -> (Int, Int, TimeInterval, Int, Int) {
+        func key(_ snapshot: AgentSnapshot, _ offset: Int) -> (Int, Int, Int, TimeInterval, Int, Int) {
             (snapshot.threads.contains(where: \.isGenerating) ? 1 : 0,
              snapshot.threads.contains(where: \.isWaitingOnYou) ? 1 : 0,
+             snapshot.threads.contains(where: \.isFinishedUnread) ? 1 : 0,
              snapshot.threads.map(\.lastActivity.timeIntervalSince1970).max() ?? 0,
              snapshot.isRunning ? 1 : 0,
              -offset)
@@ -81,6 +92,16 @@ final class ThreadStore: ObservableObject {
     /// Agents blocked on the human, across every app (amber orb badge).
     var totalNeedsYou: Int {
         snapshots.reduce(0) { $0 + $1.needsYouCount }
+    }
+
+    /// Finished-but-unread results across every app (blue ring segment).
+    var totalUnread: Int {
+        snapshots.reduce(0) { $0 + $1.unreadCount }
+    }
+
+    /// Every thread the hub knows about; the ring denominators.
+    var totalThreads: Int {
+        snapshots.reduce(0) { $0 + $1.threads.count }
     }
 
     nonisolated static func defaultSources() -> [AgentSource] {

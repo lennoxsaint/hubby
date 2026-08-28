@@ -34,6 +34,17 @@ enum HubbyMetrics {
     }
 }
 
+/// The ink-glass identity: status colors shared by dots, rings, and labels.
+/// (Surface tokens live alongside once the chrome moves off system material.)
+enum HubbyGlass {
+    /// Generating right now.
+    static let running = Color(hex: 0x34D27A)
+    /// Blocked waiting on the human.
+    static let needsYou = Color.orange
+    /// Finished, not yet jumped to.
+    static let unread = Color(hex: 0x5AA2FF)
+}
+
 enum HubbyAnim {
     /// The one spring that drives the entire orb <-> hub morph.
     static let morph = Animation.spring(response: 0.42, dampingFraction: 0.78)
