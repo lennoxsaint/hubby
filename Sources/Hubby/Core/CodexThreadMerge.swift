@@ -37,6 +37,12 @@ enum CodexThreadMerge {
         cap: Int = 8,
         now: Date = Date()
     ) -> [AgentThread] {
+        // Detect scheduled automations from the RAW row: the "Automation:"
+        // prefix lives in the first-user-message title, while the resolved
+        // display title usually comes from the session index without it.
+        let automationIDs = Set(dbRows.filter {
+            ($0.title ?? "").hasPrefix("Automation:") || ($0.name ?? "").hasPrefix("Automation:")
+        }.map(\.id))
         let threads = dbRows.map { row -> AgentThread in
             let entry = index[row.id]
             let dbTitle = row.title
@@ -61,10 +67,27 @@ enum CodexThreadMerge {
                 cwd: row.cwd,
                 isGenerating: activeIDs.contains(row.id))
         }
-        // Spinners always survive the cap; the rest by recency.
-        let sorted = threads.sorted {
-            ($0.isGenerating ? 1 : 0, $0.lastActivity.timeIntervalSince1970)
-                > ($1.isGenerating ? 1 : 0, $1.lastActivity.timeIntervalSince1970)
+        // Scheduled automations re-run every few minutes and would flood
+        // the recency cap, evicting the user's real threads. Collapse
+        // repeat runs to one row per title (newest wins; a generating run
+        // always survives) and rank automations below interactive work —
+        // spinners first, then interactive threads by recency, then the
+        // deduped automations.
+        var seenTitles = Set<String>()
+        let deduped = threads
+            .sorted { $0.lastActivity > $1.lastActivity }
+            .filter { thread in
+                guard automationIDs.contains(thread.id), !thread.isGenerating
+                else { return true }
+                return seenTitles.insert(thread.title).inserted
+            }
+        let sorted = deduped.sorted {
+            ($0.isGenerating ? 1 : 0,
+             automationIDs.contains($0.id) ? 0 : 1,
+             $0.lastActivity.timeIntervalSince1970)
+                > ($1.isGenerating ? 1 : 0,
+                   automationIDs.contains($1.id) ? 0 : 1,
+                   $1.lastActivity.timeIntervalSince1970)
         }
         return Array(sorted.prefix(cap))
     }

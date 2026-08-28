@@ -41,6 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 controller.handleFanScroll(event, order: store.snapshots.map(\.id))
             }
         }
+        panel.onMagnify = { event in
+            MainActor.assumeIsolated { controller.handleMagnify(event) }
+        }
         controller.attach(panel: panel)
         panel.orderFrontRegardless()
 
@@ -168,9 +171,16 @@ final class PanelController: ObservableObject {
     /// Which app a fan swipe pinned on top; nil = the store's smart order.
     /// Ephemeral: cleared on collapse and after 30s of collapsed idling.
     @Published private(set) var pinnedTopID: String?
+    /// Free rotation of the collapsed flower, in degrees — the fidget spin.
+    /// Settles to a multiple of 60° and commits the nearest icon as pin.
+    @Published private(set) var orbSpin: Double = 0
+    /// Cumulative pinch magnification over the orb (negative = pinch-in,
+    /// gathers the icons; a big pinch-out blooms the hub open).
+    @Published private(set) var orbPinch: CGFloat = 0
     private weak var panel: FloatingPanel?
     private var outsideClickMonitor: Any?
     private var pinResetTask: Task<Void, Never>?
+    private var spinSettleTask: Task<Void, Never>?
     private var scrollAccumulator: CGFloat = 0
 
     /// Last natural height reported by the hub content.
@@ -223,7 +233,9 @@ final class PanelController: ObservableObject {
     /// `order` is the store's current (unrotated) app order.
     func handleFanScroll(_ event: NSEvent, order: [String]) -> Bool {
         guard !isExpanded else { return false } // the hub's ScrollView owns scrolls
-        guard abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) else { return false }
+        guard abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) else {
+            return handleSpinScroll(event, order: order)
+        }
         if event.phase == .began { scrollAccumulator = 0 }
         // One flick = one step: swallow the momentum tail so it neither
         // multi-steps the fan nor scrolls whatever sits beneath the panel.
@@ -239,6 +251,60 @@ final class PanelController: ObservableObject {
         }
         if event.phase == .ended || event.phase == .cancelled { scrollAccumulator = 0 }
         return true
+    }
+
+    /// The fidget spin: vertical scroll over the orb rotates the flower
+    /// freely (momentum deltas included — the trackpad supplies the
+    /// physics). A short quiet spell settles it: snap to the nearest 60°
+    /// and commit whichever icon reached twelve o'clock as the pin, so
+    /// the spin's outcome and the fan cycle always agree.
+    private func handleSpinScroll(_ event: NSEvent, order: [String]) -> Bool {
+        guard abs(event.scrollingDeltaY) > 0.4, !order.isEmpty else { return false }
+        orbSpin += event.scrollingDeltaY * 1.4
+        spinSettleTask?.cancel()
+        spinSettleTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(220))
+            guard !Task.isCancelled else { return }
+            self?.settleSpin(order: order)
+        }
+        return true
+    }
+
+    private func settleSpin(order: [String]) {
+        let count = max(order.count, 1)
+        let steps = Int((orbSpin / 60).rounded())
+        withAnimation(HubbyAnim.fanCycle) { orbSpin = Double(steps) * 60 }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(380))
+            guard let self, !self.isExpanded else { return }
+            // Icon i sits at twelve when i*60 + spin ≡ 0 (mod 360); commit
+            // it as pin and zero the spin in one transaction — the rotated
+            // order at spin 0 renders the identical frame.
+            let displayed = FanRotation.rotatedIDs(order, top: self.pinnedTopID)
+            let index = ((-steps) % count + count) % count
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                self.orbSpin = 0
+                self.pinnedTopID = displayed[index]
+            }
+            self.armPinReset()
+        }
+    }
+
+    /// Trackpad pinch over the collapsed orb: pinch-in squeezes the flower
+    /// (pure toy — it springs back), a decisive pinch-out blooms the hub.
+    func handleMagnify(_ event: NSEvent) {
+        guard !isExpanded else { return }
+        orbPinch += event.magnification
+        if event.phase == .ended || event.phase == .cancelled {
+            if orbPinch > 0.25 {
+                orbPinch = 0
+                withAnimation(HubbyAnim.morph) { setExpanded(true) }
+            } else {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) { orbPinch = 0 }
+            }
+        }
     }
 
     /// While collapsed, an untouched pin drifts back to the smart order.

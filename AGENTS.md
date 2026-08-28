@@ -85,6 +85,35 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
   enumeration still fails. Also: a binary launched from a terminal shell
   inherits the terminal's AX grant via responsible-process attribution, so
   the ungranted flow can only be tested via a `launchctl`/Finder launch.
+- The floating prompt card is INTERACTIVE (options/controls are clickable),
+  unlike the old display-only recap overlay. Two rules keep it workable:
+  only the card's own frame takes hits (the overlay's GeometryReader has no
+  hit surface), and the hover poller must keep the card alive while the
+  cursor is inside its rect (`cardRect` is shared by layout and keepalive)
+  — otherwise leaving the row to reach a button dismisses the card.
+- Actuator guard contract (Keystrokes/PromptActuator): nothing may post a
+  synthetic keystroke without, in order, (1) re-reading the session data
+  and matching the exact pending `tool_use_id`, (2) raising the exact
+  window, (3) confirming the target app is frontmost, and afterwards
+  (4) confirming the answer appeared in the session data. Any failed step
+  falls back to a plain jump. "Pending" for Claude Code means the tool_use
+  has no later `tool_result` with its id AND no later message line — the
+  answered record echoes the options back, so id correlation is mandatory.
+- Keymap truth (read from Claude Code's own TUI source, not guessed): the
+  plain AskUserQuestion QuestionView handles ONLY up/down/return — digit
+  keys exist only in the preview variant, so digits silently no-op and a
+  bare Return answers option 1. Navigate with Down×i then Return; a
+  single-question, non-multiSelect selection submits the tool immediately.
+  Plan-approval (ExitPlanMode) options are built DYNAMICALLY
+  (clear-context / auto-mode / Ultraplan variants shift every index) — a
+  blind sequence could select "bypass permissions", so plan approvals are
+  never typed: the Approve pill exact-jumps to the dialog instead.
+- Codex "Automation: …" threads re-run on a schedule and will flood any
+  recency-capped list; dedupe by name and rank below interactive threads
+  (CodexThreadMerge), and fetch deep (64 rows) so real threads survive.
+- `magnify(with:)` does reach the PassthroughHostingView in this
+  nonactivating borderless panel; the override forwards to the panel's
+  `onMagnify` and still calls super.
 
 ## Architecture
 

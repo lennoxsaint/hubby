@@ -16,6 +16,11 @@ struct ExpandedHub: View {
     let snapshots: [AgentSnapshot]
     let onJump: (AgentSnapshot, AgentThread?) -> Void
     let onCollapse: () -> Void
+    /// Answer a blocked prompt (nil = approve, else 0-based option).
+    let onAnswer: (AgentSnapshot, AgentThread, Int?) -> Void
+    let onTogglePin: (AgentSnapshot, AgentThread) -> Void
+    let onMarkRead: (AgentSnapshot, AgentThread) -> Void
+    let onNudge: (AgentSnapshot, AgentThread) -> Void
 
     @State private var openApp: String?
     @State private var rowsHeight: CGFloat = 0
@@ -44,12 +49,38 @@ struct ExpandedHub: View {
         snapshots: [AgentSnapshot],
         initialOpenApp: String? = nil,
         onJump: @escaping (AgentSnapshot, AgentThread?) -> Void,
-        onCollapse: @escaping () -> Void
+        onCollapse: @escaping () -> Void,
+        onAnswer: @escaping (AgentSnapshot, AgentThread, Int?) -> Void = { _, _, _ in },
+        onTogglePin: @escaping (AgentSnapshot, AgentThread) -> Void = { _, _ in },
+        onMarkRead: @escaping (AgentSnapshot, AgentThread) -> Void = { _, _ in },
+        onNudge: @escaping (AgentSnapshot, AgentThread) -> Void = { _, _ in }
     ) {
         self.snapshots = snapshots
         self.onJump = onJump
         self.onCollapse = onCollapse
+        self.onAnswer = onAnswer
+        self.onTogglePin = onTogglePin
+        self.onMarkRead = onMarkRead
+        self.onNudge = onNudge
         _openApp = State(initialValue: initialOpenApp)
+    }
+
+    /// Every blocked thread across every app — the Needs-you strip's rows.
+    private var blockedRows: [(snapshot: AgentSnapshot, thread: AgentThread)] {
+        snapshots.flatMap { snapshot in
+            snapshot.blockedThreads.map { (snapshot, $0) }
+        }
+    }
+
+    /// Resolve an anchor key (accordion or strip) back to its thread.
+    private func resolve(_ key: String) -> (snapshot: AgentSnapshot, thread: AgentThread)? {
+        let id = key.hasPrefix("strip:") ? String(key.dropFirst(6)) : key
+        for snapshot in snapshots {
+            if let thread = snapshot.threads.first(where: { $0.id == id }) {
+                return (snapshot, thread)
+            }
+        }
+        return nil
     }
 
     private var scrollHeight: CGFloat {
@@ -60,18 +91,24 @@ struct ExpandedHub: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if !blockedRows.isEmpty {
+                needsYouStrip
+            }
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(Array(snapshots.enumerated()), id: \.element.id) { index, snapshot in
                         AppRow(
                             snapshot: snapshot,
                             isOpen: openApp == snapshot.id,
+                            hoveredKey: hoverKey,
                             onToggle: {
                                 withAnimation(.spring(duration: 0.3)) {
                                     openApp = openApp == snapshot.id ? nil : snapshot.id
                                 }
                             },
-                            onJump: onJump)
+                            onJump: onJump,
+                            onPillTap: { thread in pillTapped(snapshot, thread, key: thread.id) },
+                            onTogglePin: { thread in onTogglePin(snapshot, thread) })
                         // Cascade: rows fall in one after another on expand.
                         // Animation is `value:`-scoped so hover, accordion,
                         // and reorders stay untouched; no per-row transition
@@ -179,6 +216,14 @@ struct ExpandedHub: View {
             FileHandle.standardError.write(Data(
                 "tick p=\(point.map { "\(Int($0.x)),\(Int($0.y))" } ?? "-") key=\(key ?? "-") ticks=\(hoverTicks)\n".utf8))
         }
+        // While a card is showing, the cursor is allowed to leave the row
+        // and travel INTO the card (it has clickable options/controls);
+        // dismissing on that transit would make the buttons unreachable.
+        if let id = recapID, let point,
+           let rect = cardRect(for: id, anchors: anchors, proxy: proxy),
+           rect.insetBy(dx: -6, dy: -6).contains(point) {
+            return
+        }
         if key != hoverKey {
             hoverKey = key
             hoverTicks = 0
@@ -202,30 +247,121 @@ struct ExpandedHub: View {
         }
     }
 
-    /// The floating recap card, anchored by the hovered row's reported
-    /// bounds. Placed below the row, flipped above near the hub's bottom,
-    /// x-clamped to the hub; hit-testing is off throughout, so the panel's
-    /// interactive rect never has to know it exists.
+    /// Where the floating card for anchor key `id` sits: below the row,
+    /// flipped above near the hub's bottom, x-clamped to the hub. One
+    /// formula shared by layout and the hover keepalive so they agree.
+    private func cardRect(
+        for id: String, anchors: [String: Anchor<CGRect>], proxy: GeometryProxy
+    ) -> CGRect? {
+        guard let anchor = anchors[id], let entry = resolve(id) else { return nil }
+        let rect = proxy[anchor]
+        let width: CGFloat = 270
+        let height: CGFloat
+        if let prompt = entry.thread.pendingPrompt {
+            height = prompt.kind == .approve
+                ? 120 : 90 + CGFloat(min(prompt.options.count, 4)) * 34
+        } else {
+            height = 110
+        }
+        let x = min(max(rect.minX, 6), proxy.size.width - width - 6)
+        let below = rect.maxY + 4
+        let y = below + height > proxy.size.height
+            ? max(rect.minY - height - 4, 6) : below
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    /// The floating card, anchored by the hovered row's reported bounds.
+    /// Interactive — prompt options and recap controls are clickable; only
+    /// the card's own frame takes hits, everything around it passes through
+    /// to the rows (the GeometryReader has no hit surface of its own).
     @ViewBuilder
     private func recapOverlay(anchors: [String: Anchor<CGRect>]) -> some View {
         GeometryReader { proxy in
             if let id = recapID,
-               let anchor = anchors[id],
-               let thread = snapshots.flatMap(\.threads).first(where: { $0.id == id }) {
-                let rect = proxy[anchor]
-                let cardWidth: CGFloat = 270
-                let estimatedHeight: CGFloat = 110
-                let x = min(max(rect.minX, 6), proxy.size.width - cardWidth - 6)
-                let below = rect.maxY + 4
-                let y = below + estimatedHeight > proxy.size.height
-                    ? max(rect.minY - estimatedHeight - 4, 6) : below
-                RecapCard(thread: thread)
-                    .frame(width: cardWidth, alignment: .leading)
-                    .offset(x: x, y: y)
+               let rect = cardRect(for: id, anchors: anchors, proxy: proxy),
+               let entry = resolve(id) {
+                card(for: entry)
+                    .frame(width: rect.width, alignment: .leading)
+                    .offset(x: rect.minX, y: rect.minY)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
-        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func card(for entry: (snapshot: AgentSnapshot, thread: AgentThread)) -> some View {
+        if let prompt = entry.thread.pendingPrompt {
+            PromptCard(thread: entry.thread, prompt: prompt) { optionIndex in
+                withAnimation(.easeOut(duration: 0.15)) { recapID = nil }
+                onAnswer(entry.snapshot, entry.thread, optionIndex)
+            }
+        } else {
+            RecapCard(
+                thread: entry.thread,
+                onCopy: entry.thread.recap.map { recap in
+                    {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(recap, forType: .string)
+                        withAnimation(.easeOut(duration: 0.15)) { recapID = nil }
+                    }
+                },
+                onMarkRead: {
+                    withAnimation(.easeOut(duration: 0.15)) { recapID = nil }
+                    onMarkRead(entry.snapshot, entry.thread)
+                },
+                onNudge: canNudge(entry) ? {
+                    withAnimation(.easeOut(duration: 0.15)) { recapID = nil }
+                    onNudge(entry.snapshot, entry.thread)
+                } : nil)
+        }
+    }
+
+    /// Nudge only where it can act: an idle Claude Code session with
+    /// nothing pending (the actuator re-verifies both before typing).
+    private func canNudge(_ entry: (snapshot: AgentSnapshot, thread: AgentThread)) -> Bool {
+        entry.snapshot.id == "claude-code"
+            && entry.thread.pendingPrompt == nil
+            && entry.thread.status() == .idle
+    }
+
+    /// A pill tap approves immediately (green) or reveals the options card
+    /// (amber) — an Approve needs no extra step, a choice does.
+    private func pillTapped(_ snapshot: AgentSnapshot, _ thread: AgentThread, key: String) {
+        if thread.pendingPrompt?.kind == .approve {
+            onAnswer(snapshot, thread, nil)
+        } else {
+            withAnimation(.easeOut(duration: 0.15)) { recapID = key }
+        }
+    }
+
+    /// Every blocked thread from every app, one glance from anywhere —
+    /// pinned above the accordions, hidden when nothing needs you.
+    private var needsYouStrip: some View {
+        VStack(spacing: 0) {
+            ForEach(blockedRows, id: \.thread.id) { entry in
+                HStack(spacing: 8) {
+                    AppIconView(info: entry.snapshot.info, size: 16, dimmed: false)
+                    ThreadRow(
+                        thread: entry.thread,
+                        anchorPrefix: "strip:",
+                        hovered: hoverKey == "strip:" + entry.thread.id,
+                        onTap: { onJump(entry.snapshot, entry.thread) },
+                        onPillTap: {
+                            pillTapped(entry.snapshot, entry.thread, key: "strip:" + entry.thread.id)
+                        })
+                }
+                .padding(.leading, 10)
+            }
+        }
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(HubbyGlass.needsYou.opacity(0.07)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(HubbyGlass.needsYou.opacity(0.18), lineWidth: 0.5))
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
     }
 
     /// A minimal capsule thumb, drawn only while scrolling a capped list —
@@ -282,8 +418,11 @@ private struct ScrollOffsetKey: PreferenceKey {
 private struct AppRow: View {
     let snapshot: AgentSnapshot
     let isOpen: Bool
+    let hoveredKey: String?
     let onToggle: () -> Void
     let onJump: (AgentSnapshot, AgentThread?) -> Void
+    let onPillTap: (AgentThread) -> Void
+    let onTogglePin: (AgentThread) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -365,8 +504,23 @@ private struct AppRow: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                ForEach(snapshot.threads) { thread in
-                    ThreadRow(thread: thread, onTap: { onJump(snapshot, thread) })
+                // Threads arrive pre-tiered (blocked → pinned → recent);
+                // the hairline marks where the pinned tier ends.
+                let divider = ThreadTiers.dividerIndex(snapshot.threads)
+                ForEach(Array(snapshot.threads.enumerated()), id: \.element.id) { index, thread in
+                    if index == divider {
+                        Rectangle()
+                            .fill(HubbyGlass.hairline)
+                            .frame(height: 0.5)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                    }
+                    ThreadRow(
+                        thread: thread,
+                        hovered: hoveredKey == thread.id,
+                        onTap: { onJump(snapshot, thread) },
+                        onPin: { onTogglePin(thread) },
+                        onPillTap: { onPillTap(thread) })
                 }
             }
         }

@@ -22,6 +22,12 @@ struct AgentThread: Identifiable, Hashable {
     /// True when a generation finished and the user hasn't jumped to the
     /// thread since. Set by `ReadStateStore.decorate`, never by adapters.
     var isFinishedUnread: Bool = false
+    /// The prompt this thread is blocked on, when the source can recover
+    /// its content (question + options). Implies `isWaitingOnYou`.
+    var pendingPrompt: PendingPrompt? = nil
+    /// User-pinned to the top of its app's drop-down (below blocked
+    /// threads). Set by `ThreadPinStore.decorate`, never by adapters.
+    var isPinned: Bool = false
 
     /// Spinner > needs-you > finished-unread > recently-touched > idle.
     func status(now: Date = Date()) -> ThreadStatus {
@@ -71,4 +77,27 @@ struct AgentSnapshot: Identifiable {
     var needsYouCount: Int { threads.filter { $0.status() == .waitingOnYou }.count }
     /// Finished results the user hasn't jumped to yet (blue badge).
     var unreadCount: Int { threads.filter { $0.status() == .finishedUnread }.count }
+    /// Threads blocked on the human — the Needs-you strip's rows.
+    var blockedThreads: [AgentThread] { threads.filter { $0.status() == .waitingOnYou } }
+}
+
+/// The tier order inside an app's drop-down: blocked-on-you first, then
+/// pinned, then everything else in the adapter's own order (adapters
+/// already order by generating/recency). Stable within each tier.
+enum ThreadTiers {
+    static func tiered(_ threads: [AgentThread]) -> [AgentThread] {
+        let blocked = threads.filter { $0.status() == .waitingOnYou }
+        let pinned = threads.filter { $0.isPinned && $0.status() != .waitingOnYou }
+        let rest = threads.filter { !$0.isPinned && $0.status() != .waitingOnYou }
+        return blocked + pinned + rest
+    }
+
+    /// Index of the first non-pinned row after tiering — where the
+    /// pinned/recent hairline divider sits. Nil when no divider is needed.
+    static func dividerIndex(_ tiered: [AgentThread]) -> Int? {
+        guard let last = tiered.lastIndex(where: {
+            $0.isPinned || $0.status() == .waitingOnYou
+        }) else { return nil }
+        return last + 1 < tiered.count ? last + 1 : nil
+    }
 }

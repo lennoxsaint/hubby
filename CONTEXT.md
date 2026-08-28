@@ -1,12 +1,24 @@
 # Hubby — ubiquitous language
 
 - **Orb**: the collapsed resting state — a blush-glass circle holding the six-app **flower** with per-app **unread badges**. No counts, pills, or rings beyond the badges.
-- **Hub**: the expanded state — app rows with thread drop-downs, the cursive **wordmark** at the bottom centre (also the in-hub collapse control).
-- **Flower**: the orb's arrangement of all six app icons around the centre; the app at twelve o'clock is the **pinned** one.
-- **Pin**: the app chosen by a swipe over the orb; it leads the hub and its accordion arrives open. Without a pin, the top (most active) app is treated the same.
+- **Hub**: the expanded state — the **Needs-you strip**, app rows with thread drop-downs, and the cursive **wordmark** at the bottom centre (also the in-hub collapse control).
+- **Flower**: the orb's arrangement of all six app icons around the centre; the icon at twelve o'clock is the **lead app**, drawn larger and on top.
+- **Lead app** (formerly "pin", app-level): the app at the flower's twelve o'clock — chosen by swipe or **spin**, ephemeral, cleared on collapse. It leads the hub and its accordion arrives open. Distinct from a **pinned thread**.
+- **Pinned thread**: a thread the user pinned to the top of its app's drop-down (persistent, hover-reveal pin glyph). Sits in the pinned **tier**.
+- **Tier**: the drop-down order — **blocked** threads first, then pinned, then recent, with a hairline divider after the pinned tier.
+- **Blocked**: a thread waiting on the human (`waitingOnYou`). When the source exposes the prompt's content it carries a **pending prompt**.
+- **Pending prompt**: the recovered question + options a blocked thread is stuck on. Approve-kind (yes/no plan gate) or choose-kind (options).
+- **Needs-you strip**: the slim cross-app band above the accordions listing every blocked thread; hidden when nothing needs the user.
+- **Approve pill / Choose pill**: the translucent green/amber capsule on a blocked row. Choose reveals the options card and clicking an option actuates; Approve exact-jumps to the plan dialog (its option list is dynamic, so the final key press stays the user's).
+- **Actuation**: Hubby answering a prompt for real — guarded keystrokes into the exact raised window, only after re-verifying the prompt is still pending, with confirmation read back from the session data. Any failed guard falls back to a jump.
+- **Nudge**: a guarded "continue" typed into an idle Claude Code session from the recap card.
+- **Spin**: the fidget rotation of the flower (vertical/circular scroll); settling snaps to 60° and commits the icon at twelve as lead app.
+- **Cluster**: pinch-in gathering the flower's icons toward the centre; springs back on release. Pinch-out blooms the hub open.
+- **All-clear**: the orb's rest state when nothing is blocked and nothing is unread — smaller, calmer, desaturated.
 - **Thread**: one conversation/session/agent inside an agent app.
-- **Unread**: a thread that finished while unobserved and has not been jumped to. Clears on jump.
+- **Unread**: a thread that finished while unobserved and has not been jumped to. Clears on jump or the recap card's mark-read.
 - **Verdict**: the recap card's first line — plain words answering "finished, still working, or waiting on you".
 - **Recap**: the one-sentence "what just happened" under the verdict, extracted from the thread's last message.
 - **Exact jump**: landing on the precise thread/window/tab (deep link or AX window match), as opposed to merely activating the app. A jump never launches or creates windows.
 - **Slug**: the `aiTitle` a Claude Code session writes into its file and its terminal tab title — the strongest window-match signal.
+- **Automation thread**: a scheduled Codex run ("Automation: …"); duplicates collapse to the newest run and rank below interactive threads.

@@ -14,10 +14,14 @@ struct RecapAnchorKey: PreferenceKey {
 
 /// The hover card answers exactly one question in plain words: what just
 /// happened, and is it finished or does it need you? A verdict line, then
-/// at most one sentence of the thread's last message. Display-only — it
-/// never takes hits, so it can't perturb the panel's hit-test gating.
+/// at most one sentence of the thread's last message — plus tiny actions
+/// (copy the result, mark read, nudge) when the hub provides them. The
+/// hub's overlay keeps the card alive while the cursor is inside it.
 struct RecapCard: View {
     let thread: AgentThread
+    var onCopy: (() -> Void)? = nil
+    var onMarkRead: (() -> Void)? = nil
+    var onNudge: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -45,6 +49,21 @@ struct RecapCard: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if onCopy != nil || onMarkRead != nil || onNudge != nil {
+                HStack(spacing: 10) {
+                    if let onCopy, thread.recap != nil {
+                        control("doc.on.doc", "Copy", action: onCopy)
+                    }
+                    if let onMarkRead, thread.isFinishedUnread {
+                        control("checkmark.circle", "Mark read", action: onMarkRead)
+                    }
+                    if let onNudge {
+                        control("hand.tap", "Nudge", action: onNudge)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 2)
+            }
         }
         .padding(11)
         .background(
@@ -58,7 +77,20 @@ struct RecapCard: View {
                 .strokeBorder(HubbyGlass.accent.opacity(0.35), lineWidth: 1)
                 .blur(radius: 0.6))
         .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-        .allowsHitTesting(false)
+    }
+
+    private func control(
+        _ symbol: String, _ label: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: symbol).font(.system(size: 9, weight: .medium))
+                Text(label).font(.system(size: 9.5, weight: .medium, design: .rounded))
+            }
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var verdict: (symbol: String, words: String, color: Color) {

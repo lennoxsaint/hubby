@@ -5,7 +5,15 @@ import SwiftUI
 /// publishes its bounds through RecapAnchorKey for anchoring).
 struct ThreadRow: View {
     let thread: AgentThread
+    /// Distinguishes the Needs-you strip's anchors from accordion rows'
+    /// (the same thread can appear in both; last-wins merge would collide).
+    var anchorPrefix: String = ""
+    /// Poller-derived hover (the pin glyph fades in on it).
+    var hovered: Bool = false
     let onTap: () -> Void
+    var onPin: (() -> Void)? = nil
+    /// Approve/Choose pill click; the hub decides what it means by kind.
+    var onPillTap: (() -> Void)? = nil
 
     var body: some View {
         Button(action: onTap) {
@@ -23,9 +31,24 @@ struct ThreadRow: View {
                     }
                 }
                 Spacer()
+                if let prompt = thread.pendingPrompt, let onPillTap {
+                    PromptPill(prompt: prompt, onTap: onPillTap)
+                }
                 Text(relativeTimeFormatter.localizedString(for: thread.lastActivity, relativeTo: Date()))
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(.tertiary)
+                if let onPin, hovered || thread.isPinned {
+                    Button(action: onPin) {
+                        Image(systemName: thread.isPinned ? "pin.fill" : "pin")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(
+                                thread.isPinned
+                                    ? HubbyGlass.accent : Color.black.opacity(0.35))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
@@ -37,7 +60,7 @@ struct ThreadRow: View {
         // Rows always publish their bounds; the hub only reads the hovered
         // one's. 500ms dwell — long enough to mean "tell me more".
         .anchorPreference(key: RecapAnchorKey.self, value: .bounds) {
-            [thread.id: $0]
+            [anchorPrefix + thread.id: $0]
         }
     }
 

@@ -29,7 +29,15 @@ struct RootView: View {
                         onJump: handleJump,
                         onCollapse: {
                             withAnimation(HubbyAnim.morph) { panel.setExpanded(false) }
-                        })
+                        },
+                        onAnswer: handleAnswer,
+                        onTogglePin: { snapshot, thread in
+                            store.togglePin(appID: snapshot.id, thread: thread)
+                        },
+                        onMarkRead: { snapshot, thread in
+                            store.markRead(appID: snapshot.id, thread: thread)
+                        },
+                        onNudge: handleNudge)
                     .overlay(alignment: .bottom) {
                         if axPrompt {
                             AXOnboardingCard(
@@ -47,7 +55,13 @@ struct RootView: View {
                     }
                     .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
                 } else {
-                    CollapsedOrb(snapshots: orderedSnapshots)
+                    CollapsedOrb(
+                        snapshots: orderedSnapshots,
+                        spin: panel.orbSpin,
+                        pinch: panel.orbPinch,
+                        allClear: orderedSnapshots.allSatisfy {
+                            $0.needsYouCount == 0 && $0.unreadCount == 0
+                        })
                         .transition(.spinFade)
                 }
             }
@@ -84,6 +98,38 @@ struct RootView: View {
         // for light so dark-mode desktops don't get white-on-white text.
         .environment(\.colorScheme, .light)
         .onPreferenceChange(HubHeightKey.self) { panel.setContentHeight($0) }
+    }
+
+    /// Approve/option click: run the guarded actuation; on success the
+    /// refresh clears the strip, on any failed guard fall back to a plain
+    /// jump so the user can answer by hand. Nothing is typed on fallback.
+    private func handleAnswer(snapshot: AgentSnapshot, thread: AgentThread, optionIndex: Int?) {
+        guard let source = store.source(for: snapshot.id) as? ClaudeCodeSource,
+              let prompt = thread.pendingPrompt else {
+            handleJump(snapshot: snapshot, thread: thread)
+            return
+        }
+        Task { @MainActor in
+            switch await source.answer(thread, prompt: prompt, optionIndex: optionIndex) {
+            case .answered:
+                store.refresh()
+            case .fellBack:
+                handleJump(snapshot: snapshot, thread: thread)
+            }
+        }
+    }
+
+    /// Nudge an idle Claude Code session ("continue" + Return, guarded).
+    private func handleNudge(snapshot: AgentSnapshot, thread: AgentThread) {
+        guard let source = store.source(for: snapshot.id) as? ClaudeCodeSource else { return }
+        Task { @MainActor in
+            switch await source.nudge(thread) {
+            case .answered:
+                store.refresh()
+            case .fellBack:
+                handleJump(snapshot: snapshot, thread: thread)
+            }
+        }
     }
 
     private func handleJump(snapshot: AgentSnapshot, thread: AgentThread?) {

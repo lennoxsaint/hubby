@@ -13,6 +13,12 @@ enum FanRotation {
         return Array(snapshots[index...]) + Array(snapshots[..<index])
     }
 
+    /// Same rotation over bare ids (the spin-settle path has no snapshots).
+    static func rotatedIDs(_ order: [String], top id: String?) -> [String] {
+        guard let id, let index = order.firstIndex(of: id), index > 0 else { return order }
+        return Array(order[index...]) + Array(order[..<index])
+    }
+
     /// The id on top after one swipe step: the current top card slides under
     /// the stack and its neighbor rises (or the reverse for the other
     /// direction). `order` is the store's base order.

@@ -20,6 +20,13 @@ final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
         super.scrollWheel(with: event)
     }
 
+    /// Trackpad pinch feeds the orb fidget (squeeze / bloom-open). Also
+    /// forwarded to super so SwiftUI gestures aren't starved if any appear.
+    override func magnify(with event: NSEvent) {
+        (window as? FloatingPanel)?.onMagnify?(event)
+        super.magnify(with: event)
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let provider = interactiveRect else { return super.hitTest(point) }
         let local = convert(point, from: superview)
@@ -50,6 +57,8 @@ final class FloatingPanel: NSPanel {
     var onUserDidMove: (() -> Void)?
     /// Fan-cycle scroll handler; returns true when the event was consumed.
     var onFanScroll: ((NSEvent) -> Bool)?
+    /// Trackpad pinch handler (collapsed-orb fidget).
+    var onMagnify: ((NSEvent) -> Void)?
 
     init<Content: View>(content: Content, interactiveRect: @escaping () -> CGRect) {
         let size = HubbyMetrics.panelSize

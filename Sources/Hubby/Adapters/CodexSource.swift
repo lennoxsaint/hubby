@@ -19,8 +19,10 @@ struct CodexSource: AgentSource {
         iconBundleID: "com.openai.codex")
 
     private static let maxThreads = 8
-    /// Fetch more rows than we show so in-progress threads survive the cap.
-    private static let fetchLimit = 24
+    /// Fetch far more rows than we show: in-progress threads must survive
+    /// the cap, and scheduled automations re-run so often that a shallow
+    /// fetch can be 100% automation rows (they dedupe in the merge).
+    private static let fetchLimit = 64
     private static let indexTailBytes = 256 * 1024
 
     var watchedPaths: [URL] { [codexDir] }

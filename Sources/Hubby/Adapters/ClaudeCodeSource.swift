@@ -41,21 +41,76 @@ struct ClaudeCodeSource: AgentSource {
     /// terminal — and admit a better landing exists so the UI can offer
     /// the grant. Never launch anything.
     func jump(to thread: AgentThread?) -> JumpResolution {
-        if let thread, WindowLocator.isTrusted {
-            let slug = tabSlug(forSessionFile: thread.id)
-            if WindowLocator.raiseWindow(bundleIDs: Self.terminalBundleIDs, scorer: {
-                WindowLocator.score(
-                    windowTitle: $0, cwd: thread.cwd, threadTitle: thread.title,
-                    slug: slug, hints: ["claude"])
-            }) {
-                return .exactThread
-            }
+        if let thread, raiseExactTab(for: thread) {
+            return .exactThread
         }
         let fallback = activateFirstRunningTerminal()
         if thread != nil, !WindowLocator.isTrusted, fallback != .failed {
             return .needsAccessibility
         }
         return fallback
+    }
+
+    /// Land on the session's exact terminal tab (native tabs are separate
+    /// AX windows), scored by the `aiTitle` slug + cwd + title.
+    private func raiseExactTab(for thread: AgentThread) -> Bool {
+        guard WindowLocator.isTrusted else { return false }
+        let slug = tabSlug(forSessionFile: thread.id)
+        return WindowLocator.raiseWindow(bundleIDs: Self.terminalBundleIDs, scorer: {
+            WindowLocator.score(
+                windowTitle: $0, cwd: thread.cwd, threadTitle: thread.title,
+                slug: slug, hints: ["claude"])
+        })
+    }
+
+    /// Answer a blocked prompt from the hub — the Approve/Choose pill.
+    /// `optionIndex` is 0-based into `prompt.options`; nil approves.
+    /// Every guard lives in PromptActuator; a fallen-back attempt has
+    /// typed nothing (or confirmed nothing) and the UI jumps instead.
+    @MainActor
+    func answer(
+        _ thread: AgentThread, prompt: PendingPrompt, optionIndex: Int?
+    ) async -> ActuationOutcome {
+        guard prompt.actuatable,
+              let keys = PromptKeymap.keys(for: prompt, optionIndex: optionIndex)
+        else { return .fellBack }
+        let pendingNow = { self.pendingPrompt(forSessionFile: thread.id)?.toolUseID }
+        return await PromptActuator.run(
+            keys: keys,
+            frontmostBundleIDs: Self.terminalBundleIDs,
+            stillPending: { pendingNow() == prompt.toolUseID },
+            raise: { raiseExactTab(for: thread) },
+            confirmAnswered: { pendingNow() != prompt.toolUseID })
+    }
+
+    /// Nudge an idle session with "continue". Guards: genuinely idle,
+    /// nothing pending (a nudge must never answer a prompt by accident),
+    /// and the exact tab raised.
+    @MainActor
+    func nudge(_ thread: AgentThread) async -> ActuationOutcome {
+        // A vanished session file is NOT idle — it's gone; never type at it.
+        let idle = {
+            self.mtime(forSessionFile: thread.id)
+                .map { Date().timeIntervalSince($0) > 120 } ?? false
+        }
+        return await PromptActuator.run(
+            keys: PromptKeymap.nudgeKeys,
+            frontmostBundleIDs: Self.terminalBundleIDs,
+            stillPending: { self.pendingPrompt(forSessionFile: thread.id) == nil && idle() },
+            raise: { raiseExactTab(for: thread) },
+            confirmAnswered: { !idle() })
+    }
+
+    private func pendingPrompt(forSessionFile filename: String) -> PendingPrompt? {
+        guard let file = recentSessionFiles()
+            .first(where: { $0.url.lastPathComponent == filename }),
+            let tail = FileReading.tail(of: file.url, bytes: Self.tailBytes)
+        else { return nil }
+        return JSONLParsers.claudeCodePendingPrompt(fromTail: tail)
+    }
+
+    private func mtime(forSessionFile filename: String) -> Date? {
+        recentSessionFiles().first(where: { $0.url.lastPathComponent == filename })?.mtime
     }
 
     /// The session's `aiTitle` — the slug Claude Code titles its terminal
@@ -94,16 +149,20 @@ struct ClaudeCodeSource: AgentSource {
             let title = JSONLParsers.claudeCodeTitle(fromHead: head)
             let cwd = JSONLParsers.claudeCodeCwd(fromHead: head)
             // One tail read per shown session (≤ maxThreads, off-main):
-            // the last assistant message is the hover recap.
-            let recap = FileReading.tail(of: file.url, bytes: Self.tailBytes)
-                .flatMap(JSONLParsers.claudeCodeRecap(fromTail:))
+            // the last assistant message is the hover recap, and an
+            // unanswered AskUserQuestion/ExitPlanMode is a blocked prompt.
+            let tail = FileReading.tail(of: file.url, bytes: Self.tailBytes)
+            let recap = tail.flatMap(JSONLParsers.claudeCodeRecap(fromTail:))
+            let pending = tail.flatMap(JSONLParsers.claudeCodePendingPrompt(fromTail:))
             return AgentThread(
                 id: file.url.lastPathComponent,
                 title: title ?? cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Session",
                 lastActivity: file.mtime,
                 subtitle: cwd.map(FileReading.abbreviate),
                 cwd: cwd,
-                recap: recap)
+                recap: pending?.question ?? recap,
+                isWaitingOnYou: pending != nil,
+                pendingPrompt: pending)
         }
     }
 

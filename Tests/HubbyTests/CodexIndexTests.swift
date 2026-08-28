@@ -99,3 +99,29 @@ final class RolloutTailTests: XCTestCase {
         XCTAssertFalse(RolloutTail.isLive(tail: Data("garbage not json".utf8)))
     }
 }
+
+extension CodexIndexTests {
+    func testAutomationRunsDedupeAndRankBelowInteractive() {
+        let now = Date()
+        // Mirrors the wild: the "Automation:" prefix only exists in the
+        // raw first-user-message title; the session index supplies the
+        // clean display name that actually wins title resolution.
+        let rows = (0..<6).map { i in
+            CodexDBRow(
+                id: "auto\(i)", name: nil, title: "Automation: Ledger Refresh task",
+                cwd: nil, recencyMs: Int64((now.timeIntervalSince1970 - Double(i) * 900) * 1000))
+        } + [
+            CodexDBRow(
+                id: "real", name: "THREADIFY OUTBOUND", title: nil, cwd: nil,
+                recencyMs: Int64((now.timeIntervalSince1970 - 7200) * 1000)),
+        ]
+        let index = Dictionary(uniqueKeysWithValues: (0..<6).map {
+            ("auto\($0)", JSONLParsers.CodexIndexEntry(
+                id: "auto\($0)", name: "Ledger Refresh", updatedAt: nil))
+        })
+        let merged = CodexThreadMerge.merge(dbRows: rows, index: index, activeIDs: [], cap: 8)
+        // One automation row (the newest run), and the older interactive
+        // thread outranks it.
+        XCTAssertEqual(merged.map(\.id), ["real", "auto0"])
+    }
+}

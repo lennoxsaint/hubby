@@ -85,6 +85,90 @@ enum JSONLParsers {
         return nil
     }
 
+    /// The prompt a Claude Code session is blocked on right now, if any.
+    ///
+    /// A pending `AskUserQuestion` / `ExitPlanMode` is an assistant
+    /// `tool_use` with NO later `tool_result` carrying its `tool_use_id` —
+    /// the answered record echoes the whole options array back, so presence
+    /// of options proves nothing; only the id correlation does. Any
+    /// assistant/user *message* line after the tool_use also means the
+    /// conversation moved on (bookkeeping lines don't count).
+    static func claudeCodePendingPrompt(fromTail data: Data) -> PendingPrompt? {
+        var pending: (prompt: PendingPrompt, line: Int)?
+        var answeredIDs = Set<String>()
+        var lastMessageLine = -1
+
+        for (index, line) in jsonLines(in: data).enumerated() {
+            guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                  let type = obj["type"] as? String,
+                  type == "assistant" || type == "user",
+                  let message = obj["message"] as? [String: Any],
+                  let blocks = message["content"] as? [[String: Any]] else { continue }
+            lastMessageLine = index
+            for block in blocks {
+                switch block["type"] as? String {
+                case "tool_use":
+                    guard let id = block["id"] as? String,
+                          let name = block["name"] as? String,
+                          let input = block["input"] as? [String: Any] else { continue }
+                    if let prompt = prompt(named: name, id: id, input: input) {
+                        pending = (prompt, index)
+                    }
+                case "tool_result":
+                    if let id = block["tool_use_id"] as? String { answeredIDs.insert(id) }
+                default:
+                    break
+                }
+            }
+        }
+
+        guard let pending,
+              !answeredIDs.contains(pending.prompt.toolUseID),
+              lastMessageLine == pending.line else { return nil }
+        return pending.prompt
+    }
+
+    private static func prompt(
+        named name: String, id: String, input: [String: Any]
+    ) -> PendingPrompt? {
+        switch name {
+        case "ExitPlanMode":
+            // The plan body rides in the input; its first heading is the
+            // best one-line context for "what am I approving?".
+            let title = (input["plan"] as? String)?
+                .split(separator: "\n").first
+                .map { clean(String($0).trimmingCharacters(in: CharacterSet(charactersIn: "# "))) }
+            // Not actuatable: the approval dialog's options are built
+            // dynamically (clear-context/auto-mode/Ultraplan variants
+            // shift every index), so a blind key sequence could select
+            // "bypass permissions". The pill jumps to the dialog instead.
+            return PendingPrompt(
+                kind: .approve,
+                question: title.map { "Approve plan: \($0)" } ?? "Approve the plan?",
+                options: [], toolUseID: id, actuatable: false)
+        case "AskUserQuestion":
+            guard let questions = input["questions"] as? [[String: Any]],
+                  let first = questions.first,
+                  let question = first["question"] as? String else { return nil }
+            let options = (first["options"] as? [[String: Any]] ?? []).compactMap { raw in
+                (raw["label"] as? String).map {
+                    PendingPrompt.Option(label: $0, description: raw["description"] as? String)
+                }
+            }
+            // Several questions in one call can't be finished with one
+            // selection; multi-select needs toggle+submit choreography.
+            // Both still show as blocked — the pill just jumps instead.
+            let actuatable = questions.count == 1
+                && (first["multiSelect"] as? Bool) != true
+                && !options.isEmpty
+            return PendingPrompt(
+                kind: .choose, question: clean(question, limit: 140),
+                options: options, toolUseID: id, actuatable: actuatable)
+        default:
+            return nil
+        }
+    }
+
     /// Working directory recorded in a Claude Code session head, if any.
     static func claudeCodeCwd(fromHead data: Data) -> String? {
         for line in jsonLines(in: data) {

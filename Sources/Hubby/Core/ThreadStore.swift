@@ -10,6 +10,7 @@ final class ThreadStore: ObservableObject {
 
     private let sources: [AgentSource]
     private let readState = ReadStateStore()
+    private let pins = ThreadPinStore()
     private let refreshInterval: TimeInterval
     private var timer: Timer?
     private var watcher: FileWatcher?
@@ -52,7 +53,7 @@ final class ThreadStore: ObservableObject {
                 guard let self, self.generation == tick else { return }
                 // Decoration is main-actor (it owns the read-state blob), and
                 // ordering runs after it so unread state can rank apps.
-                self.snapshots = Self.ordered(self.readState.decorate(raw))
+                self.snapshots = Self.ordered(self.decorate(raw))
             }
         }
     }
@@ -60,7 +61,29 @@ final class ThreadStore: ObservableObject {
     /// A click on a thread marks it read immediately, before any jump lands.
     func markRead(appID: String, thread: AgentThread) {
         readState.markRead(appID: appID, threadID: thread.id)
-        snapshots = Self.ordered(readState.decorate(snapshots))
+        snapshots = Self.ordered(decorate(snapshots))
+    }
+
+    /// Pin/unpin a thread to the top of its app's drop-down.
+    func togglePin(appID: String, thread: AgentThread) {
+        pins.toggle(appID: appID, threadID: thread.id)
+        snapshots = Self.ordered(decorate(snapshots))
+    }
+
+    /// Read-state, pins, then the per-app blocked → pinned → recent tiers.
+    private func decorate(_ raw: [AgentSnapshot]) -> [AgentSnapshot] {
+        pins.decorate(readState.decorate(raw)).map { snapshot in
+            AgentSnapshot(
+                info: snapshot.info, isRunning: snapshot.isRunning,
+                threads: ThreadTiers.tiered(snapshot.threads))
+        }
+    }
+
+    /// Every blocked thread across every app, for the Needs-you strip.
+    var blocked: [(snapshot: AgentSnapshot, thread: AgentThread)] {
+        snapshots.flatMap { snapshot in
+            snapshot.blockedThreads.map { (snapshot, $0) }
+        }
     }
 
     /// Shared ordering: generating first, then needs-you, then unread
