@@ -21,6 +21,8 @@ struct ExpandedHub: View {
     @State private var scrollOffset: CGFloat = 0
     @State private var scrollerVisible = false
     @State private var scrollerFadeTask: Task<Void, Never>?
+    /// Drives the expand cascade; flipped once per insertion.
+    @State private var revealed = false
 
     /// Seeding works because the hub view is freshly inserted on every
     /// expand — `State(initialValue:)` is honored each time.
@@ -48,7 +50,7 @@ struct ExpandedHub: View {
             Divider().opacity(0.4).padding(.horizontal, 14)
             ScrollView {
                 VStack(spacing: 2) {
-                    ForEach(snapshots) { snapshot in
+                    ForEach(Array(snapshots.enumerated()), id: \.element.id) { index, snapshot in
                         AppRow(
                             snapshot: snapshot,
                             isOpen: openApp == snapshot.id,
@@ -63,6 +65,15 @@ struct ExpandedHub: View {
                                 }
                             },
                             onJump: onJump)
+                        // Cascade: rows fall in one after another on expand.
+                        // Animation is `value:`-scoped so hover, accordion,
+                        // and reorders stay untouched; no per-row transition
+                        // (it would re-fire on every reorder).
+                        .opacity(revealed ? 1 : 0)
+                        .offset(y: revealed ? 0 : 10)
+                        .animation(
+                            HubbyAnim.cascade.delay(0.05 + Double(min(index, 8)) * 0.045),
+                            value: revealed)
                     }
                 }
                 .padding(8)
@@ -96,6 +107,7 @@ struct ExpandedHub: View {
             }
         }
         .onPreferenceChange(RowsHeightKey.self) { rowsHeight = $0 }
+        .onAppear { revealed = true }
         .frame(width: HubbyMetrics.hubWidth)
         // Chrome (material, border, shadow) lives in MorphSurface so orb and
         // hub share one continuously morphing shape.

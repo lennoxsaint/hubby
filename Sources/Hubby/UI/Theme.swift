@@ -80,6 +80,8 @@ enum HubbyAnim {
     static let badge = Animation.spring(response: 0.3, dampingFraction: 0.8)
     /// One fan-swipe step: top card slides under, its neighbor rises.
     static let fanCycle = Animation.spring(response: 0.35, dampingFraction: 0.75)
+    /// One hub row falling into place during the expand cascade.
+    static let cascade = Animation.spring(response: 0.32, dampingFraction: 0.8)
 }
 
 let relativeTimeFormatter: RelativeDateTimeFormatter = {

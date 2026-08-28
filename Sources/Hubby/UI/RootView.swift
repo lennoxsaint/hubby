@@ -44,7 +44,10 @@ struct RootView: View {
                             .transition(.opacity.combined(with: .scale(scale: 0.96)))
                         }
                     }
-                    .transition(.opacity)
+                    // Light sweep: one shimmer across the fresh glass, then
+                    // gone. Lives inside the chrome-clipped content.
+                    .overlay { LightSweep() }
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
                 } else {
                     CollapsedOrb(
                         snapshots: orderedSnapshots,
@@ -57,6 +60,19 @@ struct RootView: View {
                 }
             }
             .modifier(Shake(shakes: CGFloat(jumpFailures)))
+            // Bloom: a soft scale overshoot rides on top of the morph
+            // spring. Applied OUTSIDE the chrome (like Shake) so the
+            // momentary 3% growth never displaces hit-testing inside it.
+            .keyframeAnimator(
+                initialValue: 1.0, trigger: panel.isExpanded
+            ) { view, scale in
+                view.scaleEffect(scale, anchor: .topLeading)
+            } keyframes: { _ in
+                KeyframeTrack {
+                    CubicKeyframe(1.03, duration: 0.2)
+                    SpringKeyframe(1.0, duration: 0.3)
+                }
+            }
             // The tap lives OUTSIDE the chrome: gestures under a Material in
             // a movable-by-background window lose their mouseUp to AppKit's
             // window-drag session and never fire.
@@ -143,6 +159,28 @@ private struct MorphChrome: ViewModifier, Animatable {
                     .blur(radius: 0.6)
                     .allowsHitTesting(false))
             .shadow(color: .black.opacity(0.45), radius: 16, y: 6)
+    }
+}
+
+/// A single band of light that sweeps the glass once when the hub appears
+/// and parks itself offscreen. Fresh insertion per expand re-fires it.
+private struct LightSweep: View {
+    @State private var travel = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            LinearGradient(
+                colors: [.clear, .white.opacity(0.12), .clear],
+                startPoint: .leading, endPoint: .trailing)
+                .frame(width: width * 0.45)
+                .rotationEffect(.degrees(14))
+                .offset(x: travel ? width * 1.3 : -width * 0.6)
+                .onAppear {
+                    withAnimation(.easeOut(duration: 0.55).delay(0.12)) { travel = true }
+                }
+        }
+        .allowsHitTesting(false)
     }
 }
 
