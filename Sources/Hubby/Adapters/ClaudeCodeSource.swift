@@ -19,6 +19,7 @@ struct ClaudeCodeSource: AgentSource {
     private static let maxAge: TimeInterval = 24 * 3600
     private static let maxThreads = 8
     private static let headBytes = 128 * 1024
+    private static let tailBytes = 64 * 1024
 
     var watchedPaths: [URL] { [projectsDir] }
 
@@ -72,12 +73,17 @@ struct ClaudeCodeSource: AgentSource {
             guard let head = FileReading.head(of: file.url, bytes: Self.headBytes) else { return nil }
             let title = JSONLParsers.claudeCodeTitle(fromHead: head)
             let cwd = JSONLParsers.claudeCodeCwd(fromHead: head)
+            // One tail read per shown session (≤ maxThreads, off-main):
+            // the last assistant message is the hover recap.
+            let recap = FileReading.tail(of: file.url, bytes: Self.tailBytes)
+                .flatMap(JSONLParsers.claudeCodeRecap(fromTail:))
             return AgentThread(
                 id: file.url.lastPathComponent,
                 title: title ?? cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Session",
                 lastActivity: file.mtime,
                 subtitle: cwd.map(FileReading.abbreviate),
-                cwd: cwd)
+                cwd: cwd,
+                recap: recap)
         }
     }
 

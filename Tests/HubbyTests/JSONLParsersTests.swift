@@ -33,10 +33,33 @@ final class JSONLParsersTests: XCTestCase {
         XCTAssertEqual(meta.cwd, "/Users/lennoxsaint/Documents/Codex/growth-pilot")
     }
 
+    func testClaudeCodeRecapIsLastAssistantText() throws {
+        let data = try fixture("claude-session")
+        XCTAssertEqual(JSONLParsers.claudeCodeRecap(fromTail: data), "Sure.")
+    }
+
+    func testCodexRecapPrefersNewestAgentMessage() throws {
+        let data = try fixture("codex-rollout-tail")
+        // The event_msg agent_message is newer than the response_item text.
+        XCTAssertEqual(
+            JSONLParsers.codexRecap(fromTail: data),
+            "Shipped the fix and all tests pass.")
+    }
+
+    func testCodexRecapReadsResponseItemShape() {
+        let line = Data("""
+            {"type":"response_item","payload":{"type":"message","role":"assistant",\
+            "content":[{"type":"output_text","text":"From the item stream."}]}}
+            """.utf8)
+        XCTAssertEqual(JSONLParsers.codexRecap(fromTail: line), "From the item stream.")
+    }
+
     func testGarbageInputReturnsNil() {
         let garbage = Data("not json\n{broken".utf8)
         XCTAssertNil(JSONLParsers.claudeCodeTitle(fromHead: garbage))
         XCTAssertNil(JSONLParsers.codexMeta(fromHead: garbage))
+        XCTAssertNil(JSONLParsers.claudeCodeRecap(fromTail: garbage))
+        XCTAssertNil(JSONLParsers.codexRecap(fromTail: garbage))
     }
 
     func testLongTitleIsTruncated() {

@@ -43,6 +43,9 @@ final class GrokRosterTests: XCTestCase {
         // The bot's name is the thread title; the project is the subtitle.
         XCTAssertEqual(threads[0].title, "Jamie")
         XCTAssertEqual(threads[0].subtitle, "Jobs")
+        // The blocked reason doubles as the hover recap.
+        XCTAssertEqual(threads[0].recap, "Tick the checkbox")
+        XCTAssertNil(threads[1].recap)
         XCTAssertEqual(threads[2].title, "Nameless")
         XCTAssertNil(threads[2].subtitle) // empty project → no subtitle
         XCTAssertEqual(threads[3].title, "Solo Project") // no name → project title

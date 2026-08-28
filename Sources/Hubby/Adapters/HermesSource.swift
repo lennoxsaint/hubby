@@ -49,6 +49,25 @@ struct HermesSource: AgentSource {
             return []
         }
         let now = Date()
+        return threads(from: rows, now: now)
+    }
+
+    /// The newest message of a session — the hover recap. One tiny query per
+    /// shown session (≤ maxThreads), nil-tolerant like everything else here.
+    private func lastMessage(sessionID: String) -> String? {
+        let escaped = sessionID.replacingOccurrences(of: "'", with: "''")
+        let sql = """
+            SELECT content FROM messages
+            WHERE session_id = '\(escaped)'
+            ORDER BY timestamp DESC LIMIT 1
+            """
+        guard let rows = SQLiteReader.query(stateDB, mode: .liveWAL, sql: sql),
+              let content = rows.first.flatMap({ $0.string(0) }),
+              !content.isEmpty else { return nil }
+        return JSONLParsers.clean(content, limit: 200)
+    }
+
+    private func threads(from rows: [SQLiteReader.Row], now: Date) -> [AgentThread] {
         let cutoff = now.addingTimeInterval(-Self.maxAge)
         return rows.compactMap { row in
             guard let id = row.string(0) else { return nil }
@@ -64,6 +83,7 @@ struct HermesSource: AgentSource {
                 lastActivity: lastActivity,
                 subtitle: cwd.map(FileReading.abbreviate),
                 cwd: cwd,
+                recap: lastMessage(sessionID: id),
                 isGenerating: row.int64(4) == 1
                     && now.timeIntervalSince(lastActivity) < 120)
         }

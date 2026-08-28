@@ -1,0 +1,4 @@
+{"timestamp":"2026-08-27T10:00:00.000Z","type":"event_msg","payload":{"type":"task_started"}}
+{"timestamp":"2026-08-27T10:00:05.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Old message."}]}}
+{"timestamp":"2026-08-27T10:01:00.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Shipped the fix and all tests pass."}}
+{"timestamp":"2026-08-27T10:01:01.000Z","type":"event_msg","payload":{"type":"task_complete"}}

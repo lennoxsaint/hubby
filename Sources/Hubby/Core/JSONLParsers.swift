@@ -28,6 +28,50 @@ enum JSONLParsers {
         return firstUserText
     }
 
+    /// The last thing Claude said in a session — the hover recap. Scans a
+    /// tail read backwards for the newest assistant text block (a leading
+    /// partial line just fails JSON parsing and is skipped).
+    static func claudeCodeRecap(fromTail data: Data) -> String? {
+        for line in jsonLines(in: data).reversed() {
+            guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                  obj["type"] as? String == "assistant",
+                  let message = obj["message"] as? [String: Any],
+                  let text = messageText(message), !text.isEmpty else { continue }
+            return clean(text, limit: 200)
+        }
+        return nil
+    }
+
+    /// The last agent message in a Codex rollout tail — the hover recap.
+    /// Covers both stream shapes: `event_msg`/`agent_message` events and
+    /// `response_item` assistant messages with `output_text` blocks.
+    static func codexRecap(fromTail data: Data) -> String? {
+        for line in jsonLines(in: data).reversed() {
+            guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                  let payload = obj["payload"] as? [String: Any] else { continue }
+            switch obj["type"] as? String {
+            case "event_msg":
+                if payload["type"] as? String == "agent_message",
+                   let text = payload["message"] as? String, !text.isEmpty {
+                    return clean(text, limit: 200)
+                }
+            case "response_item":
+                if payload["type"] as? String == "message",
+                   payload["role"] as? String == "assistant",
+                   let blocks = payload["content"] as? [[String: Any]] {
+                    for block in blocks where block["type"] as? String == "output_text" {
+                        if let text = block["text"] as? String, !text.isEmpty {
+                            return clean(text, limit: 200)
+                        }
+                    }
+                }
+            default:
+                break
+            }
+        }
+        return nil
+    }
+
     /// Working directory recorded in a Claude Code session head, if any.
     static func claudeCodeCwd(fromHead data: Data) -> String? {
         for line in jsonLines(in: data) {

@@ -9,6 +9,10 @@ struct AgentThread: Identifiable, Hashable {
     let subtitle: String?
     /// Working directory of the session, used for terminal-focused jumps.
     let cwd: String?
+    /// One-line recap of what the thread last did (last assistant message,
+    /// blocked-on reason, ...) shown in the hover card. Nil when the source
+    /// can't say; the card falls back to title/status.
+    var recap: String? = nil
     /// True when the source *knows* the thread is generating right now
     /// (e.g. a live Codex rollout turn) — not just recently touched.
     var isGenerating: Bool = false

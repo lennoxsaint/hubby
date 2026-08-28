@@ -41,11 +41,22 @@ struct CodexSource: AgentSource {
               let rows = threadRows(from: stateDB) else {
             return rolloutFallback()
         }
-        return CodexThreadMerge.merge(
+        let merged = CodexThreadMerge.merge(
             dbRows: rows,
             index: sessionIndex(),
             activeIDs: liveThreadIDs(rows: rows),
             cap: Self.maxThreads)
+        // Recaps only for the rows that survived the cap: one tail read each.
+        let rolloutPaths = Dictionary(
+            rows.compactMap { row in row.rolloutPath.map { (row.id, $0) } },
+            uniquingKeysWith: { first, _ in first })
+        return merged.map { thread in
+            var thread = thread
+            thread.recap = rolloutPaths[thread.id]
+                .flatMap { FileReading.tail(of: URL(fileURLWithPath: $0), bytes: RolloutTail.tailBytes) }
+                .flatMap(JSONLParsers.codexRecap(fromTail:))
+            return thread
+        }
     }
 
     /// `state_N.sqlite` with the highest N — strict match so the backup
@@ -115,7 +126,9 @@ struct CodexSource: AgentSource {
                 title: meta.title,
                 lastActivity: file.mtime,
                 subtitle: meta.cwd.map(FileReading.abbreviate),
-                cwd: meta.cwd)
+                cwd: meta.cwd,
+                recap: FileReading.tail(of: file.url, bytes: RolloutTail.tailBytes)
+                    .flatMap(JSONLParsers.codexRecap(fromTail:)))
         }
     }
 

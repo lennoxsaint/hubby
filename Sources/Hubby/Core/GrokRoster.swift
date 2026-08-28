@@ -55,6 +55,7 @@ enum GrokRoster {
             // context. A nameless agent borrows the project title (no duplicate).
             let botName = name?.isEmpty == false ? name : nil
             let project = title?.isEmpty == false ? title : nil
+            let awaiting = row["awaitingUserResponse"] as? [String: Any]
             return AgentThread(
                 id: id,
                 title: JSONLParsers.clean(botName ?? project ?? "Agent"),
@@ -62,7 +63,10 @@ enum GrokRoster {
                     .map { Date(timeIntervalSince1970: $0 / 1000) } ?? .distantPast,
                 subtitle: botName != nil ? project : nil,
                 cwd: nil,
-                isWaitingOnYou: row["awaitingUserResponse"] is [String: Any])
+                // "Why is this agent blocked" is the best recap Grok offers.
+                recap: (awaiting?["reason"] as? String)
+                    .flatMap { $0.isEmpty ? nil : JSONLParsers.clean($0, limit: 200) },
+                isWaitingOnYou: awaiting != nil)
         }
         let sorted = threads.sorted {
             ($0.isWaitingOnYou ? 1 : 0, $0.lastActivity.timeIntervalSince1970)

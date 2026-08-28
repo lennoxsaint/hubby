@@ -23,6 +23,8 @@ struct ExpandedHub: View {
     @State private var scrollerFadeTask: Task<Void, Never>?
     /// Drives the expand cascade; flipped once per insertion.
     @State private var revealed = false
+    /// Thread id whose recap card is showing (500ms hover dwell).
+    @State private var recapID: String?
 
     /// Seeding works because the hub view is freshly inserted on every
     /// expand — `State(initialValue:)` is honored each time.
@@ -64,7 +66,10 @@ struct ExpandedHub: View {
                                     openApp = snapshot.id // accordion: siblings close
                                 }
                             },
-                            onJump: onJump)
+                            onJump: onJump,
+                            onRecap: { id in
+                                withAnimation(.easeOut(duration: 0.15)) { recapID = id }
+                            })
                         // Cascade: rows fall in one after another on expand.
                         // Animation is `value:`-scoped so hover, accordion,
                         // and reorders stay untouched; no per-row transition
@@ -94,6 +99,7 @@ struct ExpandedHub: View {
             .frame(height: max(scrollHeight, 44))
             .overlay(alignment: .topTrailing) { scroller }
             .onPreferenceChange(ScrollOffsetKey.self) { offset in
+                if offset != scrollOffset { recapID = nil } // anchor moved
                 scrollOffset = offset
                 guard isScrollable else { return }
                 scrollerVisible = true
@@ -108,12 +114,42 @@ struct ExpandedHub: View {
         }
         .onPreferenceChange(RowsHeightKey.self) { rowsHeight = $0 }
         .onAppear { revealed = true }
+        .onChange(of: openApp) { recapID = nil } // its row is gone/moved
         .frame(width: HubbyMetrics.hubWidth)
+        .overlayPreferenceValue(RecapAnchorKey.self) { anchors in
+            recapOverlay(anchors: anchors)
+        }
         // Chrome (material, border, shadow) lives in MorphSurface so orb and
         // hub share one continuously morphing shape.
         .background(GeometryReader { proxy in
             Color.clear.preference(key: HubHeightKey.self, value: proxy.size.height)
         })
+    }
+
+    /// The floating recap card, anchored by the hovered row's reported
+    /// bounds. Placed below the row, flipped above near the hub's bottom,
+    /// x-clamped to the hub; hit-testing is off throughout, so the panel's
+    /// interactive rect never has to know it exists.
+    @ViewBuilder
+    private func recapOverlay(anchors: [String: Anchor<CGRect>]) -> some View {
+        GeometryReader { proxy in
+            if let id = recapID,
+               let anchor = anchors[id],
+               let thread = snapshots.flatMap(\.threads).first(where: { $0.id == id }) {
+                let rect = proxy[anchor]
+                let cardWidth: CGFloat = 270
+                let estimatedHeight: CGFloat = 110
+                let x = min(max(rect.minX, 6), proxy.size.width - cardWidth - 6)
+                let below = rect.maxY + 4
+                let y = below + estimatedHeight > proxy.size.height
+                    ? max(rect.minY - estimatedHeight - 4, 6) : below
+                RecapCard(thread: thread)
+                    .frame(width: cardWidth, alignment: .leading)
+                    .offset(x: x, y: y)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     /// A minimal capsule thumb, drawn only while scrolling a capped list —
@@ -173,6 +209,7 @@ private struct AppRow: View {
     let onToggle: () -> Void
     let onHoverOpen: () -> Void
     let onJump: (AgentSnapshot, AgentThread?) -> Void
+    let onRecap: (String?) -> Void
 
     @State private var hoverTask: Task<Void, Never>?
 
@@ -262,7 +299,10 @@ private struct AppRow: View {
                 .buttonStyle(.plain)
             } else {
                 ForEach(snapshot.threads) { thread in
-                    ThreadRow(thread: thread) { onJump(snapshot, thread) }
+                    ThreadRow(
+                        thread: thread,
+                        onTap: { onJump(snapshot, thread) },
+                        onRecap: onRecap)
                 }
             }
         }
@@ -274,6 +314,11 @@ private struct AppRow: View {
 struct ThreadRow: View {
     let thread: AgentThread
     let onTap: () -> Void
+    /// Reports this thread's id after a hover dwell (nil on exit) so the
+    /// hub can float the recap card by the row.
+    var onRecap: (String?) -> Void = { _ in }
+
+    @State private var recapTask: Task<Void, Never>?
 
     var body: some View {
         Button(action: onTap) {
@@ -301,6 +346,22 @@ struct ThreadRow: View {
         }
         .buttonStyle(.plain)
         .help("Jump to this thread")
+        // Rows always publish their bounds; the hub only reads the hovered
+        // one's. 500ms dwell — long enough to mean "tell me more".
+        .anchorPreference(key: RecapAnchorKey.self, value: .bounds) {
+            [thread.id: $0]
+        }
+        .onHover { hovering in
+            recapTask?.cancel()
+            if hovering {
+                recapTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    if !Task.isCancelled { onRecap(thread.id) }
+                }
+            } else {
+                onRecap(nil)
+            }
+        }
     }
 
     @ViewBuilder
