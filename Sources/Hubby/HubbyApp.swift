@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @MainActor
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let glyph = OctopusGlyph.menuBarImage()
@@ -297,14 +298,33 @@ final class PanelController: ObservableObject {
         preExpandOrigin = nil
     }
 
-    /// Clicking anywhere in another app collapses the hub. Global monitors
-    /// only see events outside our own process, so clicks inside stay safe.
+    /// The visible content (orb or hub) in screen coordinates — the panel
+    /// frame is mostly transparent margin, so hit decisions use this rect.
+    private func screenContentRect() -> NSRect {
+        guard let panel else { return .zero }
+        let size = visibleContentSize
+        let pad = HubbyMetrics.panelPadding
+        return NSRect(
+            x: panel.frame.minX + pad,
+            y: panel.frame.maxY - pad - size.height,
+            width: size.width, height: size.height)
+    }
+
+    /// Clicking anywhere in another app collapses the hub. AppKit skips
+    /// physical clicks on our own windows here, but CGEvent-posted clicks
+    /// (automation, accessibility tools) are delivered regardless of where
+    /// they land — so anything inside the visible hub is filtered manually.
     private func updateOutsideClickMonitor() {
         if isExpanded {
             outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
-                matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+                // Windowless monitor events carry screen coordinates.
+                let location = event.window?.convertPoint(toScreen: event.locationInWindow)
+                    ?? event.locationInWindow
                 Task { @MainActor in
-                    withAnimation(HubbyAnim.morph) { self?.setExpanded(false) }
+                    guard let self, !self.screenContentRect().insetBy(dx: -4, dy: -4).contains(location)
+                    else { return }
+                    withAnimation(HubbyAnim.morph) { self.setExpanded(false) }
                 }
             }
         } else if let monitor = outsideClickMonitor {

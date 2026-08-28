@@ -100,6 +100,10 @@ struct RootView: View {
             store.markRead(appID: snapshot.id, thread: thread)
         }
         let resolution = store.source(for: snapshot.id)?.jump(to: thread) ?? .failed
+        if ProcessInfo.processInfo.environment["HUBBY_DEBUG"] != nil {
+            FileHandle.standardError.write(Data(
+                "jump app=\(snapshot.id) thread=\(thread?.title ?? "-") resolution=\(resolution) trusted=\(WindowLocator.isTrusted) shouldOffer=\(AXOnboarding.shouldOffer)\n".utf8))
+        }
         switch resolution {
         case .failed:
             // Missing app: shake instead of silently failing.

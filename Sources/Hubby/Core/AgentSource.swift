@@ -14,6 +14,11 @@ protocol AgentSource: Sendable {
     func isRunning(runningBundleIDs: Set<String>) -> Bool
     /// Current threads, newest first. Called off the main thread every tick.
     func fetchThreads() -> [AgentThread]
+    /// Bring the thread frontmost — as precisely as the app allows. Must be
+    /// a protocol requirement: adapters override it, and an extension-only
+    /// method is statically dispatched through the existential, silently
+    /// dropping every override.
+    @MainActor func jump(to thread: AgentThread?) -> JumpResolution
     /// Directories the FSEvents watcher monitors to refresh this source
     /// the moment its app writes (renames, new turns...).
     var watchedPaths: [URL] { get }

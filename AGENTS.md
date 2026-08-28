@@ -60,7 +60,23 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
   against `make app`'s bundle. Never present system UI from the
   nonactivating panel; the in-hub card + status-menu item are the pattern.
 - `HUBBY_AUTOTEST=1` drives an expand/collapse cycle ~2.5s after launch for
-  deterministic screenshots/recordings.
+  deterministic screenshots/recordings. `HUBBY_DEBUG=1` prints each jump's
+  resolution/trust state to stderr.
+- Any customized adapter behavior (like `jump(to:)`) MUST be declared as a
+  protocol requirement on `AgentSource`, not just provided in the extension:
+  extension-only methods are statically dispatched through the `AgentSource`
+  existential, so every adapter override is silently ignored. This bug shipped
+  once — the Codex deep link and AX window matching were dead until `jump`
+  became a requirement.
+- The outside-click global monitor receives CGEvent-posted (synthetic) clicks
+  even when they land on our own window — AppKit only filters physical
+  own-window events. The monitor must drop events inside the visible content
+  rect or every automation/accessibility-tool click collapses the hub.
+- TCC changes (granting Accessibility) only take full effect for the AX APIs
+  after the app relaunches — `AXIsProcessTrusted` may flip live while window
+  enumeration still fails. Also: a binary launched from a terminal shell
+  inherits the terminal's AX grant via responsible-process attribution, so
+  the ungranted flow can only be tested via a `launchctl`/Finder launch.
 
 ## Architecture
 
