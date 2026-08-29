@@ -3,11 +3,12 @@ import SwiftUI
 /// The mascot as live vectors (mirrors `OctopusGlyph.draw`, which stays the
 /// menu-bar/AppKit rendition). Being a Canvas, it can move: `splay` flares
 /// the outer arms outward — 0 at rest, 1 fully "excited". The hub's
-/// wordmark plays a barely-there splay wiggle when the hub opens.
+/// wordmark shakes its legs through a few splay oscillations when the
+/// hub opens. Negative values tuck the arms inward (the shake's recoil).
 struct OctopusView: View {
     var size: CGFloat
-    /// 0 = rest; 1 = outer arms flared a touch outward (a few degrees and
-    /// a hair of sideways drift — subtle by design).
+    /// 0 = rest; 1 = outer arms flung wide (a big, readable flare with
+    /// sideways drift). Exaggerated on purpose — this is the excitement.
     var splay: CGFloat = 0
 
     private static let blush = Color(red: 0.91, green: 0.62, blue: 0.69)
@@ -23,10 +24,11 @@ struct OctopusView: View {
             }
 
             // Arms first (they tuck under the head). Outer arms tilt ±18°
-            // at rest; splay adds up to 5° and a 1% outward drift.
+            // at rest; splay adds up to ±22° and a 6% outward drift —
+            // big enough to read as a full-body leg shake.
             for (cx, tilt, direction) in [(0.30, -18.0, -1.0), (0.50, 0.0, 0.0), (0.70, 18.0, 1.0)] {
-                let angle = Angle.degrees(tilt + direction * 5 * Double(splay))
-                let pivot = pt(CGFloat(cx) + CGFloat(direction) * 0.01 * splay, 0.70)
+                let angle = Angle.degrees(tilt + direction * 22 * Double(splay))
+                let pivot = pt(CGFloat(cx) + CGFloat(direction) * 0.06 * splay, 0.70)
                 var arm = Path(
                     roundedRect: CGRect(
                         x: -0.065 * s, y: -0.08 * s, width: 0.13 * s, height: 0.32 * s),

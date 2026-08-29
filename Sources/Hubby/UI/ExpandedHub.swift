@@ -430,15 +430,22 @@ struct ExpandedHub: View {
         Button(action: onCollapse) {
             HStack(spacing: 5) {
                 // The same octopus the user just clicked in the orb, now
-                // settled by the wordmark — once the morph lands it flares
-                // its legs in a barely-there burst of excitement.
+                // settled by the wordmark — once the morph lands it shakes
+                // its legs wide in an unmistakable burst of excitement.
                 KeyframeAnimator(initialValue: CGFloat(0), trigger: revealed) { splay in
+                    // The legs alone are ~1px of motion at this size, so the
+                    // whole body hops up with them — that's what makes the
+                    // excitement land at 15pt.
                     OctopusView(size: 15, splay: splay)
+                        .scaleEffect(1 + 0.45 * max(splay, 0), anchor: .bottom)
                 } keyframes: { _ in
                     KeyframeTrack {
-                        CubicKeyframe(0, duration: 0.3)   // let the morph land
-                        CubicKeyframe(1, duration: 0.22)  // legs flare…
-                        SpringKeyframe(0, duration: 0.5)  // …and settle
+                        CubicKeyframe(0, duration: 0.3)      // let the morph land
+                        CubicKeyframe(1, duration: 0.13)     // legs FLING wide…
+                        CubicKeyframe(-0.35, duration: 0.12) // …snap back in…
+                        CubicKeyframe(0.85, duration: 0.12)  // …out again…
+                        CubicKeyframe(-0.25, duration: 0.11) // …and in…
+                        SpringKeyframe(0, duration: 0.45)    // …then settle
                     }
                 }
                 Text("Hubby")

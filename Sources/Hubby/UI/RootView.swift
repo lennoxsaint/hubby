@@ -234,12 +234,19 @@ private struct MorphChrome: ViewModifier, Animatable {
             .background(shape.fill(HubbyGlass.base))
             .background(shape.fill(HubbyGlass.floor))
             .overlay(shape.fill(HubbyGlass.sheen).allowsHitTesting(false))
-            .overlay(shape.strokeBorder(HubbyGlass.hairline, lineWidth: 0.5))
+            // The edge stays deliberately soft (29 Aug): a whisper of a
+            // hairline and a diffused rim so the glass melts into the
+            // desktop instead of reading as an outlined shape.
             .overlay(
-                shape.strokeBorder(HubbyGlass.rim, lineWidth: 1)
-                    .blur(radius: 0.6)
+                shape.strokeBorder(Color.black.opacity(0.045), lineWidth: 0.5)
+                    .blur(radius: 0.4)
                     .allowsHitTesting(false))
-            .shadow(color: .black.opacity(0.22), radius: 16, y: 6)
+            .overlay(
+                shape.strokeBorder(HubbyGlass.rim, lineWidth: 1.2)
+                    .blur(radius: 1.8)
+                    .opacity(0.55)
+                    .allowsHitTesting(false))
+            .shadow(color: .black.opacity(0.15), radius: 20, y: 6)
     }
 }
 
