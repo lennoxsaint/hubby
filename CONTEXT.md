@@ -1,6 +1,6 @@
 # Hubby — ubiquitous language
 
-- **Orb**: the collapsed resting state — a blush-glass circle holding the six-app **flower** around the octopus mascot (which spins with the flower), with per-app **unread badges**. No counts, pills, or rings beyond the badges.
+- **Orb**: the collapsed resting state — a blush-glass circle holding the six-app **flower** around the octopus mascot (which spins with the flower). No badges, counts, pills, or rings: the orb only says who's here; numbers live in the hub.
 - **Hub**: the expanded state — the **Priorities** section on top, app rows with thread drop-downs, and the octopus + cursive **wordmark** at the bottom centre (also the in-hub collapse control).
 - **Flower**: the orb's arrangement of all six app icons around the centre; the icon at twelve o'clock is the **lead app**, drawn larger and on top.
 - **Lead app** (formerly "pin", app-level): the app at the flower's twelve o'clock — chosen by swipe, **spin**, or tapping its icon directly (the tapped icon's app opens the hub). Ephemeral, cleared on collapse. It leads the hub and its accordion arrives open. Distinct from a **pinned thread**.
@@ -8,7 +8,8 @@
 - **Tier**: the drop-down order — **blocked** threads first, then pinned, then recent, with a hairline divider after the pinned tier.
 - **Blocked**: a thread waiting on the human (`waitingOnYou`). Lives only in its app's drop-down, top tier, with its pill; the app header carries the amber "N need you" badge. When the source exposes the prompt's content it carries a **pending prompt**. (The old cross-app *Needs-you strip* is retired — the **Priorities** section owns the top.)
 - **Pending prompt**: the recovered question + options a blocked thread is stuck on. Approve-kind (yes/no plan gate) or choose-kind (options).
-- **Priorities**: the user's top-three list at the top of the hub — three writable lines, checkbox trailing, drag to reorder, rank 1 reads strongest. Personal, not agent state: only the user writes them. Ticking strikes the line through, then it clears after a short grace (untick to undo).
+- **Priorities**: the user's top-three list at the top of the hub — a queue, not three checkboxes. Three writable lines, rank 1 reads strongest; click a line's number (or its trailing circle) to tick it done, drag the number to reorder. Ticking strikes the line for a beat (click again to undo), then the queue **promotes**: 2 → 1, 3 → 2, and slot 3 opens fresh. Personal, not agent state: only the user writes them.
+- **Priority ledger**: the durable on-disk record of every completed priority — text, rank held at completion, when it was written, when it was done, and how long it sat on the list. Append-only; nothing in the hub reads it yet.
 - **Approve pill / Choose pill**: the translucent green/amber capsule on a blocked row. Choose reveals the options card and clicking an option actuates; Approve exact-jumps to the plan dialog (its option list is dynamic, so the final key press stays the user's).
 - **Actuation**: Hubby answering a prompt for real — guarded keystrokes into the exact raised window, only after re-verifying the prompt is still pending, with confirmation read back from the session data. Any failed guard falls back to a jump.
 - **Nudge**: a guarded "continue" typed into an idle Claude Code session from the recap card.

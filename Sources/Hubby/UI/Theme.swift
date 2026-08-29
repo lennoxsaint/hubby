@@ -58,12 +58,16 @@ enum CardSide {
 /// the same glass wraps the orb, the hub, and every floating card. Text on
 /// it is always dark (RootView forces the light color scheme).
 enum HubbyGlass {
-    /// Generating right now (darkened for the light glass).
-    static let running = Color(hex: 0x14985A)
-    /// Blocked waiting on the human.
+    // The palette is deliberately two hues: ROSE for information (new
+    // results, accents) and AMBER for action (blocked on you). Everything
+    // else is ink and glass — "generating" is told by the shimmer's motion,
+    // not by a colour of its own.
+    /// Generating right now — a calm warm gray; the shimmer is the signal.
+    static let running = Color(hex: 0x8A7A80)
+    /// Blocked waiting on the human. The one loud colour.
     static let needsYou = Color(hex: 0xD97706)
-    /// Finished, not yet jumped to.
-    static let unread = Color(hex: 0x2F6FD0)
+    /// Finished, not yet jumped to — rose, matching the brand accent.
+    static let unread = Color(hex: 0xB8798A)
 
     /// Rose gold — the brand accent behind the rim light.
     static let accent = Color(hex: 0xB76E79)

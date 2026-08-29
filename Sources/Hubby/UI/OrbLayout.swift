@@ -6,9 +6,12 @@ import Foundation
 /// Coordinates are orb-local (top-left origin, `orbDiameter` square);
 /// SwiftUI's y-down space makes the trig read straight through.
 enum OrbLayout {
-    static let restSize: CGFloat = 17
-    static let leadBoost: CGFloat = 10
-    static let ringRadius: CGFloat = 21
+    // Sized so nothing ever clips: the lead icon (rest + boost = 22) at
+    // ring radius 23 reaches 34 from centre, inside the orb's 36; the ring
+    // minus a rest icon's half leaves the 20pt octopus its own clear disc.
+    static let restSize: CGFloat = 15
+    static let leadBoost: CGFloat = 7
+    static let ringRadius: CGFloat = 23
 
     /// Pinch-in pulls the ring toward the centre (floor keeps icons
     /// distinguishable); pinch-out pre-blooms slightly before the hub.

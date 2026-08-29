@@ -1,17 +1,17 @@
 import SwiftUI
 
 /// The hub's crown: the user's top three priorities, one glance from
-/// anywhere. Three lines with a checkbox on the trailing edge — write in a
-/// line, drag it vertically to reorder, tick it done. Rank carries a
-/// subtle hierarchy (the top line reads strongest). Ticking strikes the
-/// line through, then it fades to an empty slot after a short grace
-/// (untick within it to undo).
+/// anywhere. Three plain lines — write in a line, drag its number to
+/// reorder, click its number (or the circle) to tick it done. A ticked
+/// line strikes through for a beat (click again to undo), then the queue
+/// promotes: everything below moves up a rank and slot 3 opens for the
+/// next priority. Completions land in a durable on-disk ledger.
 struct PrioritiesSection: View {
     @ObservedObject var store: PriorityStore
     /// Index being dragged and its live vertical translation.
     @State private var dragIndex: Int?
     @State private var dragOffset: CGFloat = 0
-    /// Pending strike-then-clear countdowns, by slot id.
+    /// Pending strike-then-promote countdowns, by slot id.
     @State private var clearTasks: [UUID: Task<Void, Never>] = [:]
     @FocusState private var focused: UUID?
 
@@ -27,30 +27,39 @@ struct PrioritiesSection: View {
             }
         }
         .animation(HubbyAnim.accordion, value: dropTarget)
-        .padding(.vertical, 5)
-        .padding(.horizontal, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(HubbyGlass.accent.opacity(0.05)))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(HubbyGlass.accent.opacity(0.15), lineWidth: 0.5))
-        .padding(.horizontal, 8)
-        .padding(.top, 8)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        // No card, no tint — the list sits directly on the glass; one
+        // hairline separates it from the agent world below.
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.black.opacity(0.07))
+                .frame(height: 0.5)
+                .padding(.horizontal, 16)
+        }
     }
 
     private func row(index: Int, slot: PriorityStore.Priority) -> some View {
         HStack(spacing: 8) {
-            // The rank numeral doubles as the drag handle.
+            // The rank numeral is both handle and control: click ticks the
+            // line done, drag reorders.
             Text("\(index + 1)")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(HubbyGlass.accent.opacity(0.8))
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.black.opacity(0.30))
                 .frame(width: 14, height: Self.rowHeight)
                 .contentShape(Rectangle())
+                // Simultaneous, not exclusive: plain .onTapGesture lost to
+                // the drag's arbitration in this panel. The tap only lands
+                // on a near-still click (movement fails it), and a started
+                // drag suppresses it via dragIndex.
+                .simultaneousGesture(TapGesture().onEnded {
+                    if dragIndex == nil { toggleCheck(index: index, slot: slot) }
+                })
                 .gesture(dragGesture(index: index))
             if slot.checkedAt != nil {
                 // A ticked line is done, not editable — it lingers struck
-                // through for the grace window, then clears.
+                // through for a beat, then the queue promotes.
                 Text(slot.text)
                     .font(rankFont(index))
                     .strikethrough(true, color: .secondary)
@@ -69,10 +78,10 @@ struct PrioritiesSection: View {
                 toggleCheck(index: index, slot: slot)
             } label: {
                 Image(systemName: slot.checkedAt != nil ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(
                         slot.checkedAt != nil
-                            ? HubbyGlass.accent : Color.black.opacity(0.25))
+                            ? Color.black.opacity(0.45) : Color.black.opacity(0.18))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -93,12 +102,13 @@ struct PrioritiesSection: View {
         [1, 0.85, 0.7][min(index, 2)]
     }
 
-    // MARK: checkbox
+    // MARK: complete
 
     private func toggleCheck(index: Int, slot: PriorityStore.Priority) {
         if slot.checkedAt == nil {
             // Ticking an empty slot means nothing — nothing to complete.
             guard !slot.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+            focused = nil
             store.setChecked(true, at: index)
             let id = slot.id
             clearTasks[id]?.cancel()
@@ -108,7 +118,7 @@ struct PrioritiesSection: View {
                 if let current = store.slots.firstIndex(where: {
                     $0.id == id && $0.checkedAt != nil
                 }) {
-                    withAnimation(HubbyAnim.accordion) { store.clear(at: current) }
+                    withAnimation(HubbyAnim.accordion) { store.finish(at: current) }
                 }
             }
         } else {
@@ -120,7 +130,7 @@ struct PrioritiesSection: View {
     private func text(at index: Int) -> Binding<String> {
         Binding(
             get: { store.slots.indices.contains(index) ? store.slots[index].text : "" },
-            set: { if store.slots.indices.contains(index) { store.slots[index].text = $0 } })
+            set: { store.setText($0, at: index) })
     }
 
     // MARK: drag reorder
@@ -142,7 +152,7 @@ struct PrioritiesSection: View {
     }
 
     private func dragGesture(index: Int) -> some Gesture {
-        DragGesture(minimumDistance: 2)
+        DragGesture(minimumDistance: 4)
             .onChanged { value in
                 if dragIndex == nil {
                     dragIndex = index

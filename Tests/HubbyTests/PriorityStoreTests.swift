@@ -11,49 +11,102 @@ final class PriorityStoreTests: XCTestCase {
         return defaults
     }
 
+    private func freshHistoryURL() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PriorityStoreTests-\(UUID().uuidString).jsonl")
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return url
+    }
+
+    private func makeStore(
+        defaults: UserDefaults? = nil, historyURL: URL? = nil
+    ) -> PriorityStore {
+        PriorityStore(
+            defaults: defaults ?? freshDefaults(),
+            historyURL: historyURL ?? freshHistoryURL())
+    }
+
     func testAlwaysThreeSlots() {
-        let store = PriorityStore(defaults: freshDefaults())
+        let store = makeStore()
         XCTAssertEqual(store.slots.count, 3)
         XCTAssertTrue(store.slots.allSatisfy { $0.text.isEmpty && $0.checkedAt == nil })
     }
 
     func testPersistsAcrossInstances() {
         let defaults = freshDefaults()
-        let store = PriorityStore(defaults: defaults)
-        store.slots[0].text = "Ship the milestone"
-        store.slots[2].text = "Call Davide"
-        let reloaded = PriorityStore(defaults: defaults)
+        let history = freshHistoryURL()
+        let store = PriorityStore(defaults: defaults, historyURL: history)
+        store.setText("Ship the milestone", at: 0)
+        store.setText("Call Davide", at: 2)
+        let reloaded = PriorityStore(defaults: defaults, historyURL: history)
         XCTAssertEqual(reloaded.slots[0].text, "Ship the milestone")
         XCTAssertEqual(reloaded.slots[2].text, "Call Davide")
     }
 
     func testMoveReorders() {
-        let store = PriorityStore(defaults: freshDefaults())
-        store.slots[0].text = "a"
-        store.slots[1].text = "b"
-        store.slots[2].text = "c"
+        let store = makeStore()
+        store.setText("a", at: 0)
+        store.setText("b", at: 1)
+        store.setText("c", at: 2)
         store.move(from: 2, to: 0)
         XCTAssertEqual(store.slots.map(\.text), ["c", "a", "b"])
-        store.move(from: 0, to: 1)
-        XCTAssertEqual(store.slots.map(\.text), ["a", "c", "b"])
     }
 
-    func testCheckedBeyondGraceClearsOnReload() {
+    func testFinishPromotesTheQueue() {
+        // Completing #1: 2 -> 1, 3 -> 2, and slot 3 opens fresh.
+        let store = makeStore()
+        store.setText("first", at: 0)
+        store.setText("second", at: 1)
+        store.setText("third", at: 2)
+        store.setChecked(true, at: 0)
+        store.finish(at: 0)
+        XCTAssertEqual(store.slots.map(\.text), ["second", "third", ""])
+        XCTAssertNil(store.slots[2].checkedAt)
+    }
+
+    func testFinishWritesTheLedger() {
+        let history = freshHistoryURL()
+        let store = makeStore(historyURL: history)
+        store.setText("write the ledger", at: 1)
+        store.setChecked(true, at: 1)
+        store.finish(at: 1)
+        let records = store.history()
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records[0].text, "write the ledger")
+        XCTAssertEqual(records[0].rank, 2)
+        XCTAssertNotNil(records[0].createdAt)
+        XCTAssertNotNil(records[0].secondsOnList)
+    }
+
+    func testFinishingAnEmptySlotRecordsNothing() {
+        let history = freshHistoryURL()
+        let store = makeStore(historyURL: history)
+        store.finish(at: 0)
+        XCTAssertTrue(store.history().isEmpty)
+        XCTAssertEqual(store.slots.count, 3)
+    }
+
+    func testCheckedBeyondGraceFinishesOnReload() {
+        // Ticked, then the app quit: next launch records the completion
+        // and arrives already promoted.
         let defaults = freshDefaults()
-        let store = PriorityStore(defaults: defaults)
-        store.slots[0].text = "done thing"
+        let history = freshHistoryURL()
+        let store = PriorityStore(defaults: defaults, historyURL: history)
+        store.setText("done thing", at: 0)
+        store.setText("survivor", at: 1)
         store.setChecked(true, at: 0, now: Date(timeIntervalSinceNow: -60))
-        let reloaded = PriorityStore(defaults: defaults)
-        XCTAssertEqual(reloaded.slots[0].text, "")
-        XCTAssertNil(reloaded.slots[0].checkedAt)
+        let reloaded = PriorityStore(defaults: defaults, historyURL: history)
+        XCTAssertEqual(reloaded.slots.map(\.text), ["survivor", "", ""])
+        XCTAssertEqual(reloaded.history().map(\.text), ["done thing"])
     }
 
     func testCheckedWithinGraceSurvivesReload() {
         let defaults = freshDefaults()
-        let store = PriorityStore(defaults: defaults)
-        store.slots[0].text = "just ticked"
+        let history = freshHistoryURL()
+        let store = PriorityStore(defaults: defaults, historyURL: history)
+        store.setText("just ticked", at: 0)
         store.setChecked(true, at: 0)
-        let reloaded = PriorityStore(defaults: defaults)
+        let reloaded = PriorityStore(defaults: defaults, historyURL: history)
         XCTAssertEqual(reloaded.slots[0].text, "just ticked")
         XCTAssertNotNil(reloaded.slots[0].checkedAt)
     }

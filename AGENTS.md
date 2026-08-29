@@ -40,6 +40,13 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
 
 ## UI gotchas (learned the hard way)
 
+- Tap + drag on ONE view in this panel: `.onTapGesture` next to
+  `.gesture(DragGesture)` never fires — the tap loses arbitration. Use
+  `.simultaneousGesture(TapGesture())` beside the drag (movement fails the
+  tap on real drags; suppress it explicitly while a drag is live). Also:
+  `DragGesture(minimumDistance: 0)` stops delivering `onEnded` once
+  dragged events intervene — keep a small minimumDistance and let the
+  simultaneous tap own the click. (PrioritiesSection's numeral does both.)
 - A gesture that sits UNDER the chrome in this movable-by-background panel
   loses its mouseUp to AppKit's window-drag session — attach interaction
   modifiers OUTSIDE the chrome (see RootView's onTapGesture placement).
