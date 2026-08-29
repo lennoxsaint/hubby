@@ -212,6 +212,9 @@ private struct MorphSurface<Content: View>: View {
                 alignment: .topLeading)
             .modifier(MorphChrome(
                 radius: expanded ? HubbyMetrics.cornerRadius : HubbyMetrics.orbDiameter / 2))
+            // Grab anywhere along the outer edge to move the board (the
+            // interior stays interactive; the ring hit-tests only its band).
+            .overlay { if expanded { WindowDragRing() } }
     }
 }
 
@@ -246,7 +249,10 @@ private struct MorphChrome: ViewModifier, Animatable {
                     .blur(radius: 1.8)
                     .opacity(0.55)
                     .allowsHitTesting(false))
-            .shadow(color: .black.opacity(0.15), radius: 20, y: 6)
+            // Two shadows give the glass volume: a tight contact shadow
+            // seats it on the desktop, a wide ambient one lifts it off.
+            .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+            .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
     }
 }
 

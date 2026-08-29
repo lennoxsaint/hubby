@@ -51,7 +51,8 @@ struct CursorSource: AgentSource {
             let lastActivity = Date(timeIntervalSince1970: TimeInterval(updatedMs) / 1000)
             guard lastActivity > cutoff else { return nil }
             return AgentThread(
-                id: id, title: title, lastActivity: lastActivity, subtitle: nil, cwd: nil)
+                id: id, title: title, lastActivity: lastActivity, subtitle: nil, cwd: nil,
+                isGenerating: AgentThread.inferGenerating(lastActivity: lastActivity))
         }
     }
 }

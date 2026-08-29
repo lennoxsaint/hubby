@@ -171,6 +171,8 @@ struct ClaudeCodeSource: AgentSource {
                 subtitle: cwd.map(FileReading.abbreviate),
                 cwd: cwd,
                 recap: pending?.question ?? recap,
+                isGenerating: AgentThread.inferGenerating(
+                    lastActivity: file.mtime, waiting: pending != nil),
                 isWaitingOnYou: pending != nil,
                 pendingPrompt: pending)
         }

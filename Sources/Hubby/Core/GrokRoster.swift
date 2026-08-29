@@ -56,11 +56,12 @@ enum GrokRoster {
             let botName = name?.isEmpty == false ? name : nil
             let project = title?.isEmpty == false ? title : nil
             let awaiting = row["awaitingUserResponse"] as? [String: Any]
+            let lastActivity = activityMs
+                .map { Date(timeIntervalSince1970: $0 / 1000) } ?? Date.distantPast
             return AgentThread(
                 id: id,
                 title: JSONLParsers.clean(botName ?? project ?? "Agent"),
-                lastActivity: activityMs
-                    .map { Date(timeIntervalSince1970: $0 / 1000) } ?? .distantPast,
+                lastActivity: lastActivity,
                 subtitle: botName != nil ? project : nil,
                 cwd: nil,
                 // "Why is this agent blocked" beats everything; otherwise the
@@ -68,6 +69,8 @@ enum GrokRoster {
                 recap: (awaiting?["reason"] as? String).flatMap { RecapText.recap($0) }
                     ?? ((row["lastEntry"] as? [String: Any])?["text"] as? String)
                     .flatMap { RecapText.recap($0) },
+                isGenerating: AgentThread.inferGenerating(
+                    lastActivity: lastActivity, waiting: awaiting != nil, now: now),
                 isWaitingOnYou: awaiting != nil)
         }
         let sorted = threads.sorted {

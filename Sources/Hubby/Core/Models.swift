@@ -29,6 +29,18 @@ struct AgentThread: Identifiable, Hashable {
     /// threads). Set by `ThreadPinStore.decorate`, never by adapters.
     var isPinned: Bool = false
 
+    /// For sources with no authoritative generating signal (Claude Code,
+    /// Cursor, Grok): their stores are written many times a second mid-turn,
+    /// so a thread touched within the last few seconds of the fetch is
+    /// generating — unless it is known to be blocked on the human. Applied
+    /// at fetch time so ReadState sees the same transitions it sees from
+    /// authoritative sources (Codex, Hermes) and every app shimmers alike.
+    static func inferGenerating(
+        lastActivity: Date, waiting: Bool = false, now: Date = Date()
+    ) -> Bool {
+        !waiting && now.timeIntervalSince(lastActivity) < 10
+    }
+
     /// Spinner > needs-you > finished-unread > recently-touched > idle.
     func status(now: Date = Date()) -> ThreadStatus {
         if isGenerating { return .generating }
