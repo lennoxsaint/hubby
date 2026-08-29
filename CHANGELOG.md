@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.1.0 — 2026-08-29
+
+The calm release: a full visual quiet-down, a priorities queue, and the
+open-source plumbing (CI releases, Homebrew tap, diagnostics).
+
+- **Two-signal language**: shimmer = generating, amber = waiting on you.
+  Rings, badges, dots-for-everything, rim glow, and sheen are gone — one
+  flat blush-glass surface, dark ink, and exactly two colors that mean
+  something.
+- **Priorities queue + ledger**: three slots above the apps; ticking №1
+  promotes everything up and appends the finished item (with timestamps
+  and time-on-list) to a local `priority-history.jsonl`.
+- **Fixed: clicking priority 1 froze the app** — the edge-drag ring's top
+  band overlapped the row and a mouse-down drag session glued the window
+  to the cursor. The ring is now left/right/bottom only and engages only
+  on real movement. Also fixed: in-hub clicks collapsing the hub on
+  multi-display setups, and the faint square halo around the orb on light
+  desktops (stacked shadows).
+- **Drag the hub by its edges** to move the board; the interior stays
+  fully interactive.
+- **Unified "generating"** across Claude Code, Cursor, and Grok threads —
+  the same store-verified rule everywhere.
+- **First-run empty state** explaining what Hubby watches for.
+- **Menu bar grew up**: version line, per-adapter enable/disable, opt-in
+  (off-by-default) update check against GitHub Releases, and "Report a
+  Problem…" which writes a redacted debug bundle to your Desktop.
+- **App version is now truthful** (1.0.0 shipped reporting 0.1.0):
+  single-sourced from the `VERSION` file and stamped at build time.
+- Releases are now built, signed, and notarized by CI on tag push;
+  `brew install lennoxsaint/tap/hubby` is a supported install path.
+
 ## 1.0.0 — 2026-08-26
 
 First public release.

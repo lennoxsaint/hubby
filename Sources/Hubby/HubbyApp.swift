@@ -6,6 +6,7 @@ import SwiftUI
 @main
 enum HubbyMain {
     static func main() {
+        DebugBundle.installCrashHandler()
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -20,7 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var store: ThreadStore?
     private var statusItem: NSStatusItem?
     private var exactJumpsItem: NSMenuItem?
+    private var updateAvailableItem: NSMenuItem?
+    private var updateToggleItem: NSMenuItem?
+    private var adaptersMenu: NSMenu?
     private var hotkey: HotkeyManager?
+    private var updater: UpdateChecker?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let store = ThreadStore()
@@ -57,7 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.store = store
         store.start()
 
+        updater = UpdateChecker()
         setUpStatusItem()
+        updater?.checkIfDue()
 
         // ⌃⌥H summons/dismisses the hub from anywhere.
         hotkey = HotkeyManager { [weak self] in
@@ -87,6 +94,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.button?.image = glyph
 
         let menu = NSMenu()
+        // The version line doubles as the "am I on a real bundle" tell —
+        // a bare swift-build binary shows 0.0.0 (see AppVersion).
+        let versionItem = NSMenuItem(
+            title: "Hubby v\(AppVersion.short)", action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
+        // Lights up only when the opt-in check has actually seen a newer
+        // release; clicking opens the Releases page (never auto-downloads).
+        let updateItem = NSMenuItem(
+            title: "Update Available…", action: #selector(openReleases), keyEquivalent: "")
+        updateItem.isHidden = true
+        menu.addItem(updateItem)
+        updateAvailableItem = updateItem
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Show Hubby", action: #selector(showPanel), keyEquivalent: "")
         menu.addItem(withTitle: "Refresh Threads", action: #selector(refresh), keyEquivalent: "r")
         // The way back in for users who dismissed the in-hub Accessibility
@@ -99,6 +120,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(loginItem)
+        // Off by default: the one thing that may touch the network (a
+        // single anonymous GET to GitHub Releases, at most daily).
+        let updateToggle = NSMenuItem(
+            title: "Check for Updates Automatically",
+            action: #selector(toggleUpdateCheck), keyEquivalent: "")
+        updateToggle.state = (updater?.isEnabled ?? false) ? .on : .off
+        menu.addItem(updateToggle)
+        updateToggleItem = updateToggle
+        menu.addItem(withTitle: "Check for Updates Now", action: #selector(checkForUpdates), keyEquivalent: "")
+        // Per-adapter enable/disable; rebuilt on every open (menuNeedsUpdate)
+        // so it tracks the store without observation plumbing.
+        let adaptersItem = NSMenuItem(title: "Adapters", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Adapters")
+        adaptersItem.submenu = submenu
+        menu.addItem(adaptersItem)
+        adaptersMenu = submenu
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Report a Problem…", action: #selector(reportProblem), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Hubby", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
@@ -108,7 +147,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        exactJumpsItem?.isHidden = WindowLocator.isTrusted
+        // NSMenuDelegate calls arrive on the main thread; the protocol just
+        // isn't annotated, so hop explicitly (same pattern as the panel
+        // closures in applicationDidFinishLaunching).
+        MainActor.assumeIsolated {
+            exactJumpsItem?.isHidden = WindowLocator.isTrusted
+            if let version = updater?.availableVersion {
+                updateAvailableItem?.title = "Update Available: v\(version)…"
+                updateAvailableItem?.isHidden = false
+            } else {
+                updateAvailableItem?.isHidden = true
+            }
+            updateToggleItem?.state = (updater?.isEnabled ?? false) ? .on : .off
+            rebuildAdaptersMenu()
+        }
+    }
+
+    @MainActor
+    private func rebuildAdaptersMenu() {
+        guard let adaptersMenu, let store else { return }
+        adaptersMenu.removeAllItems()
+        for toggle in store.sourceToggles {
+            let item = NSMenuItem(
+                title: toggle.name, action: #selector(toggleAdapter(_:)), keyEquivalent: "")
+            item.representedObject = toggle.id
+            item.state = toggle.enabled ? .on : .off
+            item.target = self
+            adaptersMenu.addItem(item)
+        }
+    }
+
+    @objc private func toggleAdapter(_ sender: NSMenuItem) {
+        MainActor.assumeIsolated {
+            guard let id = sender.representedObject as? String, let store else { return }
+            let enabled = store.sourceToggles.first { $0.id == id }?.enabled ?? true
+            store.setSourceEnabled(id, !enabled)
+        }
+    }
+
+    @objc private func toggleUpdateCheck() {
+        MainActor.assumeIsolated {
+            guard let updater else { return }
+            updater.isEnabled = !updater.isEnabled
+            if updater.isEnabled { updater.checkIfDue() }
+        }
+    }
+
+    @objc private func checkForUpdates() {
+        Task { @MainActor [weak self] in await self?.updater?.check() }
+    }
+
+    @objc private func openReleases() {
+        NSWorkspace.shared.open(UpdateChecker.releasesPage)
+    }
+
+    @objc private func reportProblem() {
+        MainActor.assumeIsolated {
+            DebugBundle.writeAndReveal(snapshots: store?.snapshots ?? [])
+        }
     }
 
     @objc private func enableExactJumps() {

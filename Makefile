@@ -3,7 +3,11 @@ BIN = .build/release/Hubby
 IDENTITY = Developer ID Application: Lennox Saint (XSL2TFT3P9)
 NOTARY_KEY = $(HOME)/.appstoreconnect/private_keys/AuthKey_K6GKYTJTBR.p8
 NOTARY_KEY_ID = K6GKYTJTBR
-VERSION = 1.0.0
+# Single source of truth for the version: the VERSION file. The app target
+# stamps it into the bundle's Info.plist so the app never misreports itself
+# (v1.0.0 shipped claiming 0.1.0 — hardcoded plist vs hardcoded Makefile).
+VERSION = $(shell cat VERSION)
+BUILD_NUMBER = $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 DMG = dist/Hubby-$(VERSION).dmg
 ZIP = dist/Hubby-$(VERSION).zip
 
@@ -26,6 +30,10 @@ app:
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
 	cp $(BIN) $(APP)/Contents/MacOS/Hubby
 	cp packaging/Info.plist $(APP)/Contents/Info.plist
+	/usr/libexec/PlistBuddy \
+		-c "Set :CFBundleShortVersionString $(VERSION)" \
+		-c "Set :CFBundleVersion $(BUILD_NUMBER)" \
+		$(APP)/Contents/Info.plist
 	cp packaging/AppIcon.icns $(APP)/Contents/Resources/AppIcon.icns
 	@echo "Built $(APP)"
 

@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in Hubby is broken or behaving oddly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! The fastest route to a fix is the debug
+        bundle: click the Hubby menu-bar icon → **Report a Problem…** —
+        it writes a redacted `hubby-debug-…` folder to your Desktop
+        (no thread titles or personal paths). Attach it below.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: debug-bundle
+    attributes:
+      label: Debug bundle
+      description: Drag the hubby-debug folder (zipped) or paste hubby-report.txt here.
+  - type: input
+    id: version
+    attributes:
+      label: Hubby version
+      description: Menu-bar icon → the "Hubby v…" line. 0.0.0 means a source build.
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+    validations:
+      required: true
+  - type: input
+    id: agent-apps
+    attributes:
+      label: Which agent apps were involved?
+      placeholder: e.g. Claude Code, Codex CLI, Cursor

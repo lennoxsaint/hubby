@@ -111,9 +111,19 @@ struct ExpandedHub: View {
 
     private var isScrollable: Bool { rowsHeight > HubbyMetrics.maxRowsHeight + 1 }
 
+    /// True when no adapter has produced a single thread — the first-run
+    /// (or everything-disabled) look. Running-but-threadless apps count as
+    /// empty too: rows of zeros read as broken, not calm.
+    private var isEmptyState: Bool {
+        snapshots.allSatisfy { $0.threads.isEmpty }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             PrioritiesSection(store: priorities)
+            if isEmptyState {
+                EmptyStateCard(apps: snapshots.map(\.info))
+            } else {
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(Array(snapshots.enumerated()), id: \.element.id) { index, snapshot in
@@ -184,6 +194,7 @@ struct ExpandedHub: View {
                         withAnimation(.easeOut(duration: 0.4)) { scrollerVisible = false }
                     }
                 }
+            }
             }
             wordmark
         }

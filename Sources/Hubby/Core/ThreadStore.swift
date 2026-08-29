@@ -9,6 +9,7 @@ final class ThreadStore: ObservableObject {
     @Published private(set) var snapshots: [AgentSnapshot] = []
 
     private let sources: [AgentSource]
+    private let toggles = SourceToggleStore()
     private let readState = ReadStateStore()
     private let pins = ThreadPinStore()
     private let dismissed = DismissedThreadStore()
@@ -28,7 +29,7 @@ final class ThreadStore: ObservableObject {
         // (empty, dimmed) while the real snapshot pass runs off-main —
         // adapters can take seconds when a source db is large.
         if snapshots.isEmpty {
-            snapshots = Self.ordered(sources.map {
+            snapshots = Self.ordered(enabledSources.map {
                 AgentSnapshot(info: $0.info, isRunning: false, threads: [])
             })
         }
@@ -49,8 +50,27 @@ final class ThreadStore: ObservableObject {
         timer?.invalidate()
     }
 
+    /// Sources the user hasn't switched off in the Adapters menu.
+    private var enabledSources: [AgentSource] {
+        let disabled = toggles.disabledIDs
+        return sources.filter { !disabled.contains($0.info.id) }
+    }
+
+    /// The Adapters submenu's model: every registered source + its state.
+    var sourceToggles: [(id: String, name: String, enabled: Bool)] {
+        let disabled = toggles.disabledIDs
+        return sources.map { ($0.info.id, $0.info.name, !disabled.contains($0.info.id)) }
+    }
+
+    /// Flip an adapter on/off; the next refresh applies it everywhere
+    /// (disabled sources are neither fetched nor shown).
+    func setSourceEnabled(_ id: String, _ enabled: Bool) {
+        toggles.setEnabled(id, enabled)
+        refresh()
+    }
+
     func refresh() {
-        let sources = self.sources
+        let sources = self.enabledSources
         // NSWorkspace is main-thread territory; capture the running set here
         // so the background snapshot pass never touches AppKit.
         let runningIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))

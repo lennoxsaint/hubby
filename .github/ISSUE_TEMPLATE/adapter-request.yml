@@ -1,0 +1,26 @@
+name: Adapter request
+description: Ask for a new agent app to appear in Hubby (or offer to build it)
+labels: [adapter]
+body:
+  - type: input
+    id: app
+    attributes:
+      label: Which agent app?
+      placeholder: e.g. Gemini CLI, Windsurf, Zed agents
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: Where does it keep session state?
+      description: |
+        Adapters read local files only (see AGENTS.md ground rules). If you
+        know where the app stores sessions — a SQLite db, JSONL logs, a
+        state dir under ~/Library or the home directory — point at it.
+        Adapters are ~one file; PRs are very welcome (see CONTRIBUTING.md).
+  - type: checkboxes
+    id: build
+    attributes:
+      label: Interested in building it?
+      options:
+        - label: I'd like to try writing this adapter myself

@@ -26,3 +26,7 @@
 - **Exact jump**: landing on the precise thread/window/tab (deep link or AX window match), as opposed to merely activating the app. A jump never launches or creates windows.
 - **Slug**: the `aiTitle` a Claude Code session writes into its file and its terminal tab title — the strongest window-match signal.
 - **Automation thread**: a scheduled Codex run ("Automation: …"); duplicates collapse to the newest run and rank below interactive threads.
+- **Update check**: the one sanctioned network act — opt-in, off by default, at most one anonymous daily read of the public releases feed. It only ever lights a menu item; installing stays a human act.
+- **Debug bundle**: the redacted diagnostic folder "Report a Problem…" writes to the Desktop — versions, adapter availability, crash stacks; never thread titles or personal paths. The user reads it before anyone else does.
+- **Adapter toggle**: a per-app off-switch in the menu bar; a disabled adapter is neither fetched nor shown, as if the app weren't installed.
+- **Empty state**: the hub's first-run face when no adapter has any thread — an explanation card in the rows area; priorities and wordmark unaffected.

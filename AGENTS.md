@@ -24,8 +24,13 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
 3. **Graceful degradation is a feature.** Every `AgentSource` must work when its
    data source is missing, unreadable, or its format changes: fall back to
    `isRunning` + "Open app". Never crash on a parse failure.
-4. **No network calls.** Hubby reads local files and local process state only.
-   Nothing leaves the machine.
+4. **No network calls** — with exactly ONE sanctioned exception: the
+   opt-in, OFF-by-default update check (`Core/UpdateCheck.swift`), a single
+   anonymous GET to GitHub's public releases API at most once a day, only
+   while the user has enabled it, never auto-downloading. Everything else
+   reads local files and local process state only; nothing else may touch
+   the network, and no telemetry, ever. The README's privacy section states
+   the same exception in the same terms — keep them in lockstep.
 5. **Keep it small.** One file per adapter. UI stays in `Sources/Hubby/UI`.
    If a file grows past ~300 lines, split it.
 
@@ -37,6 +42,11 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
 - Run: `open dist/Hubby.app`
 - Icon: `make icon`; sign/dmg/notarize/release targets in the Makefile
   (notarize needs `ISSUER=<App Store Connect issuer uuid>`)
+- Version: single-sourced from the top-level `VERSION` file; `make app`
+  stamps it into the bundle via PlistBuddy (`packaging/Info.plist` holds
+  0.0.0 placeholders — never hardcode a release number there). Releases:
+  push a `v*` tag and `.github/workflows/release.yml` builds, signs,
+  notarizes, and publishes; the tag must match `VERSION`.
 
 ## UI gotchas (learned the hard way)
 
