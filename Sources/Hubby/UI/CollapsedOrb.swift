@@ -13,36 +13,37 @@ struct CollapsedOrb: View {
     let snapshots: [AgentSnapshot]
     /// Free flower rotation in degrees (PanelController's fidget spin).
     var spin: Double = 0
+    /// The centre octopus's total angle: live spin plus the whole turns
+    /// banked by fan cycles/settles, so it turns with BOTH gestures.
+    var octopusAngle: Double = 0
     /// Cumulative pinch magnification; negative gathers icons inward.
     var pinch: CGFloat = 0
     /// Nothing blocked, nothing unread — rest state.
     var allClear: Bool = false
 
-    private static let restSize: CGFloat = 17
-    private static let leadBoost: CGFloat = 10
-    private static let ringRadius: CGFloat = 21
-
     var body: some View {
-        // Pinch-in pulls the ring toward the centre (floor keeps icons
-        // distinguishable); pinch-out pre-blooms slightly before the hub.
-        let radius = Self.ringRadius * min(max(1 + pinch * 1.6, 0.22), 1.12)
+        // Geometry lives in OrbLayout — shared with the tap hit-testing so
+        // a click lands on exactly the icon it visually hits.
         ZStack {
+            // The mascot at the flower's heart, spinning with it. Same
+            // vector rendition as the wordmark so the expand reads as one
+            // octopus travelling from orb centre to hub bottom.
+            OctopusView(size: 22)
+                .rotationEffect(.degrees(octopusAngle))
             ForEach(Array(snapshots.prefix(6).enumerated()), id: \.element.id) { index, snapshot in
-                // First app at twelve o'clock, the rest clockwise; the
-                // fidget spin rides on top of the layout angle.
-                let angle = Double(index) * .pi / 3 - .pi / 2 + spin * .pi / 180
-                // Lead-ness is continuous in angle so the enlargement
-                // hands over smoothly while the flower spins.
-                let lead = pow(max(0, (cos(angle + .pi / 2) + 1) / 2), 6)
+                let angle = OrbLayout.angle(index: index, spin: spin)
+                let lead = OrbLayout.lead(angle: angle)
+                let center = OrbLayout.center(index: index, spin: spin, pinch: pinch)
+                let mid = HubbyMetrics.orbDiameter / 2
                 AppIconView(
                     info: snapshot.info,
-                    size: Self.restSize + Self.leadBoost * lead,
+                    size: OrbLayout.iconSize(index: index, spin: spin),
                     dimmed: !snapshot.isRunning && snapshot.threads.isEmpty)
                 .overlay(alignment: .topTrailing) {
                     UnreadBadge(count: snapshot.unreadCount)
                         .offset(x: 4, y: -4)
                 }
-                .offset(x: radius * cos(angle), y: radius * sin(angle))
+                .offset(x: center.x - mid, y: center.y - mid)
                 .shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
                 .zIndex(lead)
             }

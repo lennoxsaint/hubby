@@ -11,6 +11,7 @@ final class ThreadStore: ObservableObject {
     private let sources: [AgentSource]
     private let readState = ReadStateStore()
     private let pins = ThreadPinStore()
+    private let dismissed = DismissedThreadStore()
     private let refreshInterval: TimeInterval
     private var timer: Timer?
     private var watcher: FileWatcher?
@@ -23,6 +24,14 @@ final class ThreadStore: ObservableObject {
     }
 
     func start() {
+        // First paint is instant: every app's icon appears with the orb
+        // (empty, dimmed) while the real snapshot pass runs off-main —
+        // adapters can take seconds when a source db is large.
+        if snapshots.isEmpty {
+            snapshots = Self.ordered(sources.map {
+                AgentSnapshot(info: $0.info, isRunning: false, threads: [])
+            })
+        }
         refresh()
         // FSEvents does the instant updates; the timer only backstops
         // running-app state, which has no file to watch.
@@ -70,19 +79,19 @@ final class ThreadStore: ObservableObject {
         snapshots = Self.ordered(decorate(snapshots))
     }
 
-    /// Read-state, pins, then the per-app blocked → pinned → recent tiers.
+    /// Swipe-away: hide the thread until it shows new activity.
+    func dismiss(appID: String, thread: AgentThread) {
+        dismissed.dismiss(appID: appID, threadID: thread.id)
+        snapshots = Self.ordered(decorate(snapshots))
+    }
+
+    /// Dismissal filter, read-state, pins, then the per-app
+    /// blocked → pinned → recent tiers.
     private func decorate(_ raw: [AgentSnapshot]) -> [AgentSnapshot] {
-        pins.decorate(readState.decorate(raw)).map { snapshot in
+        pins.decorate(readState.decorate(dismissed.filter(raw))).map { snapshot in
             AgentSnapshot(
                 info: snapshot.info, isRunning: snapshot.isRunning,
                 threads: ThreadTiers.tiered(snapshot.threads))
-        }
-    }
-
-    /// Every blocked thread across every app, for the Needs-you strip.
-    var blocked: [(snapshot: AgentSnapshot, thread: AgentThread)] {
-        snapshots.flatMap { snapshot in
-            snapshot.blockedThreads.map { (snapshot, $0) }
         }
     }
 

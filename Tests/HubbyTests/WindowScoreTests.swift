@@ -59,6 +59,29 @@ final class WindowScoreTests: XCTestCase {
         XCTAssertEqual(WindowLocator.score(windowTitle: "", cwd: cwd, threadTitle: "x"), 0)
     }
 
+    func testSlugMatchClearsTheExactnessBar() {
+        // Ghostty tab titles are "✳ <aiTitle>" — the prefix must not block
+        // the slug hit, and a slug hit alone must reach slugWeight so the
+        // adapter can honestly claim an exact landing.
+        XCTAssertGreaterThanOrEqual(
+            WindowLocator.score(
+                windowTitle: "✳ hubby-snappy-timings-card-gutter",
+                cwd: cwd, threadTitle: nil, slug: "hubby-snappy-timings-card-gutter"),
+            WindowLocator.slugWeight)
+    }
+
+    func testSiblingTabSharingCwdStaysBelowExactness() {
+        // Sessions in the same cwd produce tabs that match on folder/path/
+        // hint but NOT the slug — every such signal combined must stay
+        // below slugWeight, or a wrong tab could be typed into.
+        XCTAssertLessThan(
+            WindowLocator.score(
+                windowTitle: "✳ some-other-session — hubby — claude",
+                cwd: cwd, threadTitle: "Fix the panel hierarchy",
+                slug: "hubby-snappy-timings-card-gutter", hints: ["claude"]),
+            WindowLocator.slugWeight)
+    }
+
     func testHintAloneIsWeakButNonzero() {
         XCTAssertEqual(
             WindowLocator.score(

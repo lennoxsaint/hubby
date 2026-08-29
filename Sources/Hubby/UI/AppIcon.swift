@@ -24,8 +24,8 @@ enum AppIconLoader {
     }
 }
 
-/// One agent app's icon: the real installed-app icon when available
-/// (optionally with a tiny corner badge), else the tinted-symbol circle.
+/// One agent app's icon: the real installed-app icon when available,
+/// else the tinted-symbol circle.
 struct AppIconView: View {
     let info: AgentAppInfo
     let size: CGFloat
@@ -41,7 +41,6 @@ struct AppIconView: View {
             .frame(
                 width: size - (hasRing ? 7 : 0),
                 height: size - (hasRing ? 7 : 0))
-            .overlay(alignment: .bottomTrailing) { badge }
             .opacity(dimmed ? 0.45 : 1)
             .saturation(dimmed ? 0.2 : 1)
             .frame(width: size, height: size)
@@ -68,20 +67,6 @@ struct AppIconView: View {
                     .font(.system(size: size * 0.42, weight: .bold))
                     .foregroundStyle(.white)
             }
-        }
-    }
-
-    @ViewBuilder
-    private var badge: some View {
-        if let symbol = info.badgeSymbol {
-            ZStack {
-                Circle().fill(.black.opacity(0.85))
-                Image(systemName: symbol)
-                    .font(.system(size: size * 0.2, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: size * 0.42, height: size * 0.42)
-            .offset(x: size * 0.06, y: size * 0.06)
         }
     }
 }

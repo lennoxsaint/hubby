@@ -5,8 +5,10 @@ import SwiftUI
 /// (the row publishes its bounds through RecapAnchorKey for anchoring).
 struct ThreadRow: View {
     let thread: AgentThread
-    /// Distinguishes the Needs-you strip's anchors from accordion rows'
-    /// (the same thread can appear in both; last-wins merge would collide).
+    /// The hub's ticking clock — times and statuses re-evaluate live
+    /// against it instead of freezing at the last snapshot render.
+    var now: Date = Date()
+    /// Distinguishes anchor namespaces when the same thread renders twice.
     var anchorPrefix: String = ""
     /// Poller-derived hover (the pin glyph fades in on it).
     var hovered: Bool = false
@@ -15,15 +17,29 @@ struct ThreadRow: View {
     /// Approve/Choose pill click; the hub decides what it means by kind.
     var onPillTap: (() -> Void)? = nil
 
+    /// The shimmer sweep's cell domain: the status dot at cell 0, the
+    /// title from cell 2 — one continuous band, like Codex's "• Working".
+    private var rowCells: Double { Double(thread.title.count) + 2 }
+
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 8) {
                 statusDot
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(thread.title)
-                        .font(.system(.callout, design: .rounded))
-                        .lineLimit(1)
-                    if let subtitle = thread.subtitle {
+                    if thread.status(now: now) == .generating {
+                        ShimmerText(
+                            text: thread.title,
+                            font: .system(.callout, design: .rounded),
+                            cellOffset: 2,
+                            rowCells: rowCells)
+                    } else {
+                        Text(thread.title)
+                            .font(.system(.callout, design: .rounded))
+                            .lineLimit(1)
+                    }
+                    // A bare "~" (session parked in the home directory)
+                    // says nothing worth a line.
+                    if let subtitle = thread.subtitle, subtitle != "~" {
                         Text(subtitle)
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundStyle(.tertiary)
@@ -34,7 +50,7 @@ struct ThreadRow: View {
                 if let prompt = thread.pendingPrompt, let onPillTap {
                     PromptPill(prompt: prompt, onTap: onPillTap)
                 }
-                Text(relativeTimeFormatter.localizedString(for: thread.lastActivity, relativeTo: Date()))
+                Text(relativeTimeFormatter.localizedString(for: thread.lastActivity, relativeTo: now))
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(.tertiary)
                 if let onPin, hovered || thread.isPinned {
@@ -69,9 +85,9 @@ struct ThreadRow: View {
 
     @ViewBuilder
     private var statusDot: some View {
-        switch thread.status() {
+        switch thread.status(now: now) {
         case .generating:
-            SpinnerArc()
+            ShimmerDot(rowCells: rowCells)
         case .waitingOnYou:
             PulsingDot(color: HubbyGlass.needsYou)
         case .finishedUnread:
@@ -82,21 +98,6 @@ struct ThreadRow: View {
         case .idle:
             Circle().fill(Color.secondary.opacity(0.4)).frame(width: 6, height: 6)
         }
-    }
-}
-
-/// A small rotating arc: this thread is generating right now.
-struct SpinnerArc: View {
-    @State private var spinning = false
-
-    var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.72)
-            .stroke(HubbyGlass.running, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-            .frame(width: 8, height: 8)
-            .rotationEffect(.degrees(spinning ? 360 : 0))
-            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: spinning)
-            .onAppear { spinning = true }
     }
 }
 

@@ -67,10 +67,11 @@ enum HubbyGlass {
 
     /// Rose gold — the brand accent behind the rim light.
     static let accent = Color(hex: 0xB76E79)
-    /// Blush frost surface; a hint of translucency keeps the desk-pet feel.
-    static let base = Color(hex: 0xF9EDF0).opacity(0.90)
+    /// Blush frost surface; translucency is the desk-pet feel (tuned more
+    /// see-through 29 Aug — same colour, more frost).
+    static let base = Color(hex: 0xF9EDF0).opacity(0.78)
     /// Opacity floor behind `base` so the desktop never bleeds through text.
-    static let floor = Color.white.opacity(0.62)
+    static let floor = Color.white.opacity(0.46)
     /// Inner 0.5pt glass edge — dark on light glass.
     static let hairline = Color.black.opacity(0.10)
 

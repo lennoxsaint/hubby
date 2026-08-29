@@ -59,9 +59,6 @@ struct AgentAppInfo: Identifiable, Hashable {
     /// Bundle whose real icon to show, loaded at runtime from the installed
     /// app (never bundled — trademarks stay on the user's disk).
     var iconBundleID: String? = nil
-    /// Small corner-badge symbol layered on the icon (e.g. Claude Code's
-    /// terminal glyph over the Claude icon).
-    var badgeSymbol: String? = nil
 }
 
 /// A source's state at one refresh tick.
@@ -77,8 +74,6 @@ struct AgentSnapshot: Identifiable {
     var needsYouCount: Int { threads.filter { $0.status() == .waitingOnYou }.count }
     /// Finished results the user hasn't jumped to yet (blue badge).
     var unreadCount: Int { threads.filter { $0.status() == .finishedUnread }.count }
-    /// Threads blocked on the human — the Needs-you strip's rows.
-    var blockedThreads: [AgentThread] { threads.filter { $0.status() == .waitingOnYou } }
 }
 
 /// The tier order inside an app's drop-down: blocked-on-you first, then

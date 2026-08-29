@@ -11,9 +11,8 @@ struct ClaudeCodeSource: AgentSource {
         id: "claude-code", name: "Claude Code",
         bundleIDs: ["com.apple.Terminal"],
         symbol: "terminal.fill", tintHex: 0xCC785C,
-        // A CLI has no icon of its own: real Claude icon + terminal badge.
-        iconBundleID: "com.anthropic.claudefordesktop",
-        badgeSymbol: "terminal.fill")
+        // A CLI has no icon of its own; the row label says "Claude Code".
+        iconBundleID: "com.anthropic.claudefordesktop")
 
     /// Sessions untouched for longer than this are not worth showing.
     private static let maxAge: TimeInterval = 24 * 3600
@@ -33,16 +32,21 @@ struct ClaudeCodeSource: AgentSource {
         "com.microsoft.VSCode",
     ]
 
-    /// Land on the exact terminal tab when the Accessibility grant allows
-    /// (native tabs are separate AX windows). The strongest signal is the
-    /// session's `aiTitle` slug — Claude Code writes it into the session
-    /// file AND sets the terminal tab title to it; cwd and thread title
-    /// back it up. Without the grant, fall back to activating a running
-    /// terminal — and admit a better landing exists so the UI can offer
-    /// the grant. Never launch anything.
+    /// Land on the exact terminal tab when the Accessibility grant allows.
+    /// Tabs are NOT separate AX windows in every terminal — Ghostty is one
+    /// AXWindow with an AXTabGroup of radio buttons — so WindowLocator
+    /// scores tab titles too and presses the winner. The strongest signal
+    /// is the session's `aiTitle` slug — Claude Code writes it into the
+    /// session file AND sets the terminal tab title to it; cwd and thread
+    /// title back it up. `.exactThread` is claimed only on a slug-level
+    /// match — a lucky window raise is just `.window`. Without the grant,
+    /// fall back to activating a running terminal — and admit a better
+    /// landing exists so the UI can offer the grant. Never launch anything.
     func jump(to thread: AgentThread?) -> JumpResolution {
-        if let thread, raiseExactTab(for: thread) {
-            return .exactThread
+        if let thread {
+            let score = raiseScore(for: thread)
+            if score >= WindowLocator.slugWeight { return .exactThread }
+            if score > 0 { return .window }
         }
         let fallback = activateFirstRunningTerminal()
         if thread != nil, !WindowLocator.isTrusted, fallback != .failed {
@@ -51,16 +55,22 @@ struct ClaudeCodeSource: AgentSource {
         return fallback
     }
 
-    /// Land on the session's exact terminal tab (native tabs are separate
-    /// AX windows), scored by the `aiTitle` slug + cwd + title.
-    private func raiseExactTab(for thread: AgentThread) -> Bool {
-        guard WindowLocator.isTrusted else { return false }
+    /// Raise the session's terminal window/tab; returns the match score
+    /// (`>= slugWeight` = the slug matched, a near-certain exact landing).
+    private func raiseScore(for thread: AgentThread) -> Int {
+        guard WindowLocator.isTrusted else { return 0 }
         let slug = tabSlug(forSessionFile: thread.id)
         return WindowLocator.raiseWindow(bundleIDs: Self.terminalBundleIDs, scorer: {
             WindowLocator.score(
                 windowTitle: $0, cwd: thread.cwd, threadTitle: thread.title,
                 slug: slug, hints: ["claude"])
         })
+    }
+
+    /// Actuation may only type after a slug-certain landing — typing into a
+    /// merely-plausible window would answer some OTHER session's prompt.
+    private func raiseExactTab(for thread: AgentThread) -> Bool {
+        raiseScore(for: thread) >= WindowLocator.slugWeight
     }
 
     /// Answer a blocked prompt from the hub — the Approve/Choose pill.

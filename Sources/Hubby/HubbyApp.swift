@@ -179,6 +179,10 @@ final class PanelController: ObservableObject {
     /// Free rotation of the collapsed flower, in degrees — the fidget spin.
     /// Settles to a multiple of 60° and commits the nearest icon as pin.
     @Published private(set) var orbSpin: Double = 0
+    /// Whole 60° turns banked by fan cycles and settled spins — the centre
+    /// octopus rotates by `orbSpin + fanTurns×60` so it turns with the
+    /// flower through BOTH gestures and never snaps back on settle.
+    @Published private(set) var fanTurns: Int = 0
     /// Cumulative pinch magnification over the orb (negative = pinch-in,
     /// gathers the icons; a big pinch-out blooms the hub open).
     @Published private(set) var orbPinch: CGFloat = 0
@@ -247,6 +251,10 @@ final class PanelController: ObservableObject {
             pinResetTask?.cancel()
         }
         isExpanded = expanded
+        // Repositioning is the ORB's affordance. While the hub is open,
+        // background drags must lose to in-hub gestures (priorities
+        // reorder) instead of hijacking them into a window move.
+        panel?.isMovableByWindowBackground = !expanded
         updateOutsideClickMonitor()
         if !expanded {
             restorePreExpandOrigin()
@@ -274,6 +282,7 @@ final class PanelController: ObservableObject {
             scrollAccumulator = 0
             withAnimation(HubbyAnim.fanCycle) {
                 pinnedTopID = FanRotation.cycled(order, from: pinnedTopID, direction: direction)
+                fanTurns -= direction
             }
             armPinReset()
         }
@@ -322,11 +331,20 @@ final class PanelController: ObservableObject {
             transaction.disablesAnimations = true
             withTransaction(transaction) {
                 self.orbSpin = 0
+                // Bank the settled turns so the octopus's angle is
+                // continuous across the invisible spin reset.
+                self.fanTurns += steps
                 self.pinnedTopID = displayed[index]
             }
             self.lastHapticStep = 0
             self.armPinReset()
         }
+    }
+
+    /// A direct tap on a flower icon: that app leads the hub about to open.
+    func leadApp(_ id: String) {
+        pinResetTask?.cancel()
+        pinnedTopID = id
     }
 
     /// Trackpad pinch over the collapsed orb: pinch-in squeezes the flower

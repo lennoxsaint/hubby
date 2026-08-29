@@ -25,7 +25,7 @@ struct CursorSource: AgentSource {
         if let thread, WindowLocator.isTrusted,
            WindowLocator.raiseWindow(bundleIDs: info.bundleIDs, scorer: {
                WindowLocator.score(windowTitle: $0, cwd: nil, threadTitle: thread.title)
-           }) {
+           }) > 0 {
             return .window
         }
         return activateApp() ? .appActivated : .failed

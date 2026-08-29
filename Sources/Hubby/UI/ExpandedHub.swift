@@ -14,6 +14,8 @@ struct HubHeightKey: PreferenceKey {
 /// the hub ends just below the last row, scrolling only past a cap.
 struct ExpandedHub: View {
     let snapshots: [AgentSnapshot]
+    /// The user's top-three list, pinned above the accordions.
+    let priorities: PriorityStore
     /// Which side gutter the hover card floats in (screen-space choice).
     let cardSide: CardSide
     let onJump: (AgentSnapshot, AgentThread?) -> Void
@@ -21,6 +23,8 @@ struct ExpandedHub: View {
     /// Answer a blocked prompt (nil = approve, else 0-based option).
     let onAnswer: (AgentSnapshot, AgentThread, Int?) -> Void
     let onTogglePin: (AgentSnapshot, AgentThread) -> Void
+    /// Swipe-away: hide this thread until it shows new activity.
+    let onDismiss: (AgentSnapshot, AgentThread) -> Void
     /// The visible card's frame in hub coordinates (nil = no card). The
     /// panel needs it: the card sits OUTSIDE the hub rect, so hitTest and
     /// the outside-click monitor must widen to it while it shows.
@@ -49,12 +53,25 @@ struct ExpandedHub: View {
     @State private var lastHoverOpenPoint: CGPoint?
     /// Last card frame pushed to `onCardRect` (dedupes per-tick pushes).
     @State private var pushedCardRect: CGRect?
+    /// The hub's clock: times and statuses tick live while it's open.
+    @State private var now = Date()
+    /// Swipe-away state: the row under a horizontal flick and how far it
+    /// has slid. Scroll events come via a local NSEvent monitor — the
+    /// hub's ScrollView is vertical-only, so leftward flicks are ours.
+    @State private var swipeKey: String?
+    @State private var swipeAccum: CGFloat = 0
+    @State private var swipeArmed = false
+    @State private var swipeDecided = false
+    @State private var swallowMomentum = false
+    @State private var swipeMonitor: Any?
     private let hoverTimer = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
+    private let clockTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     /// Seeding works because the hub view is freshly inserted on every
     /// expand — `State(initialValue:)` is honored each time.
     init(
         snapshots: [AgentSnapshot],
+        priorities: PriorityStore,
         initialOpenApp: String? = nil,
         cardSide: CardSide = .right,
         recapID: Binding<String?> = .constant(nil),
@@ -62,31 +79,26 @@ struct ExpandedHub: View {
         onCollapse: @escaping () -> Void,
         onAnswer: @escaping (AgentSnapshot, AgentThread, Int?) -> Void = { _, _, _ in },
         onTogglePin: @escaping (AgentSnapshot, AgentThread) -> Void = { _, _ in },
+        onDismiss: @escaping (AgentSnapshot, AgentThread) -> Void = { _, _ in },
         onCardRect: @escaping (CGRect?) -> Void = { _ in }
     ) {
         self.snapshots = snapshots
+        self.priorities = priorities
         self.cardSide = cardSide
         self.onJump = onJump
         self.onCollapse = onCollapse
         self.onAnswer = onAnswer
         self.onTogglePin = onTogglePin
+        self.onDismiss = onDismiss
         self.onCardRect = onCardRect
         _openApp = State(initialValue: initialOpenApp)
         _recapID = recapID
     }
 
-    /// Every blocked thread across every app — the Needs-you strip's rows.
-    private var blockedRows: [(snapshot: AgentSnapshot, thread: AgentThread)] {
-        snapshots.flatMap { snapshot in
-            snapshot.blockedThreads.map { (snapshot, $0) }
-        }
-    }
-
-    /// Resolve an anchor key (accordion or strip) back to its thread.
+    /// Resolve an anchor key back to its thread.
     private func resolve(_ key: String) -> (snapshot: AgentSnapshot, thread: AgentThread)? {
-        let id = key.hasPrefix("strip:") ? String(key.dropFirst(6)) : key
         for snapshot in snapshots {
-            if let thread = snapshot.threads.first(where: { $0.id == id }) {
+            if let thread = snapshot.threads.first(where: { $0.id == key }) {
                 return (snapshot, thread)
             }
         }
@@ -101,9 +113,7 @@ struct ExpandedHub: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !blockedRows.isEmpty {
-                needsYouStrip
-            }
+            PrioritiesSection(store: priorities)
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(Array(snapshots.enumerated()), id: \.element.id) { index, snapshot in
@@ -111,6 +121,8 @@ struct ExpandedHub: View {
                             snapshot: snapshot,
                             isOpen: openApp == snapshot.id,
                             hoveredKey: hoverKey,
+                            now: now,
+                            rowOffset: { swipeDisplayOffset(for: $0) },
                             onToggle: {
                                 withAnimation(HubbyAnim.accordion) {
                                     openApp = openApp == snapshot.id ? nil : snapshot.id
@@ -176,6 +188,7 @@ struct ExpandedHub: View {
             wordmark
         }
         .onPreferenceChange(RowsHeightKey.self) { rowsHeight = $0 }
+        .onReceive(clockTimer) { now = $0 }
         .onAppear {
             if ProcessInfo.processInfo.environment["HUBBY_NOCASCADE"] != nil {
                 var transaction = Transaction()
@@ -184,6 +197,17 @@ struct ExpandedHub: View {
             } else {
                 revealed = true
             }
+            now = Date()
+            // Horizontal flicks over a thread row are swipe-away; the
+            // vertical-only ScrollView never claims them, so a local
+            // monitor picks them off before dispatch.
+            swipeMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+                handleSwipeEvent(event) ? nil : event
+            }
+        }
+        .onDisappear {
+            if let swipeMonitor { NSEvent.removeMonitor(swipeMonitor) }
+            swipeMonitor = nil
         }
         .onChange(of: openApp) { recapID = nil } // its row is gone/moved
         .frame(width: HubbyMetrics.hubWidth)
@@ -317,34 +341,67 @@ struct ExpandedHub: View {
         }
     }
 
-    /// Every blocked thread from every app, one glance from anywhere —
-    /// pinned above the accordions, hidden when nothing needs you.
-    private var needsYouStrip: some View {
-        VStack(spacing: 0) {
-            ForEach(blockedRows, id: \.thread.id) { entry in
-                HStack(spacing: 8) {
-                    AppIconView(info: entry.snapshot.info, size: 16, dimmed: false)
-                    ThreadRow(
-                        thread: entry.thread,
-                        anchorPrefix: "strip:",
-                        hovered: hoverKey == "strip:" + entry.thread.id,
-                        onTap: { onJump(entry.snapshot, entry.thread) },
-                        onPillTap: {
-                            pillTapped(entry.snapshot, entry.thread, key: "strip:" + entry.thread.id)
-                        })
-                }
-                .padding(.leading, 10)
-            }
+    // MARK: swipe-away
+
+    /// The visible slide of a row mid-swipe (leftward slides free, a
+    /// rightward pull only rubber-bands a little).
+    private func swipeDisplayOffset(for threadID: String) -> CGFloat {
+        guard swipeKey == threadID else { return 0 }
+        return swipeAccum < 0 ? swipeAccum : min(swipeAccum / 4, 10)
+    }
+
+    private static let swipeThreshold: CGFloat = 80
+
+    /// One scroll event, ahead of dispatch. Returns true to consume.
+    /// Mirrors the fan cycler's discipline: decide the gesture's owner on
+    /// its first real movement, then own it to the end — momentum included.
+    private func handleSwipeEvent(_ event: NSEvent) -> Bool {
+        guard event.window is FloatingPanel else { return false }
+        if event.momentumPhase != [] {
+            if event.momentumPhase == .ended { swallowMomentum = false; return true }
+            return swallowMomentum
         }
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(HubbyGlass.needsYou.opacity(0.07)))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(HubbyGlass.needsYou.opacity(0.18), lineWidth: 0.5))
-        .padding(.horizontal, 8)
-        .padding(.top, 8)
+        switch event.phase {
+        case .began:
+            swipeDecided = false
+            swipeArmed = false
+            return false
+        case .changed:
+            if !swipeDecided {
+                swipeDecided = true
+                if abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY),
+                   let key = hoverKey, !key.hasPrefix("app:"), resolve(key) != nil {
+                    swipeArmed = true
+                    swipeKey = key
+                    swipeAccum = 0
+                }
+            }
+            guard swipeArmed else { return false }
+            swipeAccum += event.scrollingDeltaX
+            if swipeAccum <= -Self.swipeThreshold, let key = swipeKey,
+               let entry = resolve(key) {
+                // Past the threshold: the row is gone. The store update
+                // removes it; the hub just resets its gesture state.
+                swipeKey = nil
+                swipeAccum = 0
+                if recapID == key { recapID = nil }
+                withAnimation(HubbyAnim.accordion) {
+                    onDismiss(entry.snapshot, entry.thread)
+                }
+            }
+            return true
+        case .ended, .cancelled:
+            let consumed = swipeArmed
+            if swipeArmed, swipeKey != nil {
+                withAnimation(HubbyAnim.fanCycle) { swipeAccum = 0 }
+            }
+            swipeArmed = false
+            swipeDecided = false
+            swallowMomentum = consumed
+            return consumed
+        default:
+            return false
+        }
     }
 
     /// A minimal capsule thumb, drawn only while scrolling a capped list —
@@ -371,13 +428,27 @@ struct ExpandedHub: View {
     /// outside the panel collapses too — there is no header).
     private var wordmark: some View {
         Button(action: onCollapse) {
-            Text("Hubby")
-                .font(HubbyGlass.wordmark)
-                .foregroundStyle(.black.opacity(0.45))
-                .padding(.top, 1)
-                .padding(.bottom, 9)
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
+            HStack(spacing: 5) {
+                // The same octopus the user just clicked in the orb, now
+                // settled by the wordmark — once the morph lands it flares
+                // its legs in a barely-there burst of excitement.
+                KeyframeAnimator(initialValue: CGFloat(0), trigger: revealed) { splay in
+                    OctopusView(size: 15, splay: splay)
+                } keyframes: { _ in
+                    KeyframeTrack {
+                        CubicKeyframe(0, duration: 0.3)   // let the morph land
+                        CubicKeyframe(1, duration: 0.22)  // legs flare…
+                        SpringKeyframe(0, duration: 0.5)  // …and settle
+                    }
+                }
+                Text("Hubby")
+                    .font(HubbyGlass.wordmark)
+                    .foregroundStyle(.black.opacity(0.45))
+            }
+            .padding(.top, 1)
+            .padding(.bottom, 9)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Collapse to orb")
@@ -402,6 +473,10 @@ private struct AppRow: View {
     let snapshot: AgentSnapshot
     let isOpen: Bool
     let hoveredKey: String?
+    /// The hub's ticking clock, threaded to rows for live times/statuses.
+    let now: Date
+    /// A row's live swipe-away slide (0 for everything not mid-swipe).
+    let rowOffset: (String) -> CGFloat
     let onToggle: () -> Void
     let onJump: (AgentSnapshot, AgentThread?) -> Void
     let onPillTap: (AgentThread) -> Void
@@ -500,10 +575,13 @@ private struct AppRow: View {
                     }
                     ThreadRow(
                         thread: thread,
+                        now: now,
                         hovered: hoveredKey == thread.id,
                         onTap: { onJump(snapshot, thread) },
                         onPin: { onTogglePin(thread) },
                         onPillTap: { onPillTap(thread) })
+                    .offset(x: rowOffset(thread.id))
+                    .opacity(1 - min(abs(rowOffset(thread.id)) / 160, 0.7))
                 }
             }
         }

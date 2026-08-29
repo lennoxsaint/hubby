@@ -79,17 +79,42 @@ enum SQLiteReader {
         }
     }
 
-    /// Copy db + sidecars to the temp dir, cached per (path, mtime) so
-    /// repeated failures don't recopy a large file.
+    /// Copy db + sidecars to the temp dir and read the copy. ONE dir per
+    /// source database (keyed by path hash), refreshed in place only when
+    /// the source changed — a per-stamp dir scheme once piled up gigabytes
+    /// of a 187MB Hermes db and stalled first paint behind the copies.
+    /// The change stamp folds in the -wal's size+mtime (ms): the wal grows
+    /// without necessarily bumping the main file's whole-second mtime, and
+    /// that once served stale same-second reads.
     private static func tempCopy(of url: URL) -> URL? {
         let fm = FileManager.default
         let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey])
             .contentModificationDate)?.timeIntervalSince1970 ?? 0
-        let stamp = "\(abs(url.path.hashValue))-\(Int(mtime))"
-        let dir = fm.temporaryDirectory.appendingPathComponent("hubby-sqlite-\(stamp)")
+        let walAttrs = try? fm.attributesOfItem(atPath: url.path + "-wal")
+        let walSize = (walAttrs?[.size] as? Int) ?? 0
+        let walMtime = (walAttrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let stamp = "\(Int(mtime * 1000))-\(walSize)-\(Int(walMtime * 1000))"
+
+        let dir = fm.temporaryDirectory
+            .appendingPathComponent("hubby-sqlite-\(abs(url.path.hashValue))")
         let copy = dir.appendingPathComponent(url.lastPathComponent)
-        if fm.fileExists(atPath: copy.path) { return copy }
+        let stampFile = dir.appendingPathComponent(".stamp")
+        if fm.fileExists(atPath: copy.path) {
+            if (try? String(contentsOf: stampFile, encoding: .utf8)) == stamp {
+                return copy
+            }
+            // Huge databases: a slightly stale copy beats recopying
+            // hundreds of MB on every refresh tick. Recopy at most every
+            // 10 minutes; small databases refresh immediately.
+            let sourceSize = (try? fm.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            let copyAge = (try? fm.attributesOfItem(atPath: copy.path)[.creationDate] as? Date)
+                .map { Date().timeIntervalSince($0) } ?? .infinity
+            if (sourceSize ?? 0) > 64 * 1024 * 1024, copyAge < 600 {
+                return copy
+            }
+        }
         do {
+            try? fm.removeItem(at: dir)
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
             try fm.copyItem(at: url, to: copy)
             for suffix in ["-wal", "-shm"] {
@@ -100,6 +125,7 @@ enum SQLiteReader {
                         to: dir.appendingPathComponent(sidecar.lastPathComponent))
                 }
             }
+            try? stamp.write(to: stampFile, atomically: true, encoding: .utf8)
             return copy
         } catch {
             try? fm.removeItem(at: dir)

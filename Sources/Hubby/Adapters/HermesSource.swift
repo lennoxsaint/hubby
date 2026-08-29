@@ -24,7 +24,7 @@ struct HermesSource: AgentSource {
            WindowLocator.raiseWindow(bundleIDs: info.bundleIDs, scorer: {
                WindowLocator.score(
                    windowTitle: $0, cwd: thread.cwd, threadTitle: thread.title)
-           }) {
+           }) > 0 {
             return .window
         }
         return activateApp() ? .appActivated : .failed

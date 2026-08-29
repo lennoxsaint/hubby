@@ -3,7 +3,7 @@
 What's next after the command-center milestone (tiers, Approve/Choose
 actuation, fidget orb). Ordered by intent, not by promise.
 
-## 1. Capture suite — the orb becomes a shutter
+## 1. Capture suite — the orb becomes a shutter  ← agreed next milestone
 
 The Hubby logo sits at the centre of the orb flower. Hovering (or clicking)
 it reveals two icons:
@@ -40,7 +40,8 @@ to it — proof captured in one gesture, routed to the reason it was taken.
   read the raised terminal's visible text via AX at actuation time, find
   the row index of "Yes, manually approve edits", and navigate to exactly
   that row. Same technique would let the Choose card verify the on-screen
-  option order before selecting.
+  option order before selecting. (WindowLocator now walks AX children for
+  the Ghostty tab fix — the element-reading muscle this needs exists.)
 - **Codex approvals**: when `approval_policy` ≠ `never`, rollouts emit
   `exec_approval_request` / `apply_patch_approval_request` events — detect
   them and extend the Approve pill to Codex.

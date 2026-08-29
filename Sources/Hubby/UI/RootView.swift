@@ -9,6 +9,8 @@ struct RootView: View {
 
     @State private var jumpFailures = 0
     @State private var axPrompt = false
+    /// The user's top-three list, shown above the accordions.
+    @StateObject private var priorities = PriorityStore()
     /// The hovered thread's card id. Owned here because the card renders in
     /// CardOverlay OUTSIDE the morph chrome (its clip covers the gutters);
     /// the hub's hover poller drives it through a binding.
@@ -26,9 +28,10 @@ struct RootView: View {
                 if panel.isExpanded {
                     ExpandedHub(
                         snapshots: orderedSnapshots,
+                        priorities: priorities,
                         // The hub always arrives with the top app's threads
-                        // already open — a swipe-pick decides which app that
-                        // is; otherwise it's the most active one.
+                        // already open — a swipe/spin/icon-tap pick decides
+                        // which app that is; otherwise the most active one.
                         initialOpenApp: panel.pinnedTopID ?? orderedSnapshots.first?.id,
                         cardSide: panel.cardSide,
                         recapID: $recapID,
@@ -39,6 +42,9 @@ struct RootView: View {
                         onAnswer: handleAnswer,
                         onTogglePin: { snapshot, thread in
                             store.togglePin(appID: snapshot.id, thread: thread)
+                        },
+                        onDismiss: { snapshot, thread in
+                            store.dismiss(appID: snapshot.id, thread: thread)
                         },
                         onCardRect: { panel.setCardRect($0) })
                     .overlay(alignment: .bottom) {
@@ -61,6 +67,7 @@ struct RootView: View {
                     CollapsedOrb(
                         snapshots: orderedSnapshots,
                         spin: panel.orbSpin,
+                        octopusAngle: panel.orbSpin + Double(panel.fanTurns) * 60,
                         pinch: panel.orbPinch,
                         allClear: orderedSnapshots.allSatisfy {
                             $0.needsYouCount == 0 && $0.unreadCount == 0
@@ -84,13 +91,18 @@ struct RootView: View {
             }
             // The tap lives OUTSIDE the chrome: gestures under a Material in
             // a movable-by-background window lose their mouseUp to AppKit's
-            // window-drag session and never fire.
+            // window-drag session and never fire. Spatial so a tap landing
+            // on a flower icon makes THAT app lead the hub it opens.
             .contentShape(Rectangle())
-            .onTapGesture {
-                if !panel.isExpanded {
-                    withAnimation(HubbyAnim.morph) { panel.setExpanded(true) }
+            .gesture(SpatialTapGesture().onEnded { value in
+                guard !panel.isExpanded else { return }
+                if let index = OrbLayout.hitIndex(
+                    point: value.location, count: orderedSnapshots.count,
+                    spin: panel.orbSpin, pinch: panel.orbPinch) {
+                    panel.leadApp(orderedSnapshots[index].id)
                 }
-            }
+                withAnimation(HubbyAnim.morph) { panel.setExpanded(true) }
+            })
             // The hover card floats in a side gutter BEYOND the hub's edge,
             // so it must render outside MorphChrome (whose clipShape would
             // swallow it). The row anchors bubble up here as preferences.
@@ -109,7 +121,12 @@ struct RootView: View {
                 }
             }
         }
-        .onChange(of: panel.isExpanded) { recapID = nil }
+        .onChange(of: panel.isExpanded) {
+            recapID = nil
+            // The hub opens on fresh data, not the last tick's (which can
+            // be a full fallback interval old).
+            if panel.isExpanded { store.refresh() }
+        }
         .padding(.horizontal, HubbyMetrics.contentInsetX)
         .padding(.vertical, HubbyMetrics.panelPadding)
         .frame(
@@ -123,7 +140,7 @@ struct RootView: View {
     }
 
     /// Approve/option click: run the guarded actuation; on success the
-    /// refresh clears the strip, on any failed guard fall back to a plain
+    /// refresh clears the blocked tier, on any failed guard fall back to a plain
     /// jump so the user can answer by hand. Nothing is typed on fallback.
     private func handleAnswer(snapshot: AgentSnapshot, thread: AgentThread, optionIndex: Int?) {
         guard let source = store.source(for: snapshot.id) as? ClaudeCodeSource,

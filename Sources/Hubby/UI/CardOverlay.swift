@@ -56,11 +56,10 @@ struct CardOverlay: View {
         }
     }
 
-    /// Resolve an anchor key (accordion or strip) back to its thread.
+    /// Resolve an anchor key back to its thread.
     private func resolve(_ key: String) -> (snapshot: AgentSnapshot, thread: AgentThread)? {
-        let id = key.hasPrefix("strip:") ? String(key.dropFirst(6)) : key
         for snapshot in snapshots {
-            if let thread = snapshot.threads.first(where: { $0.id == id }) {
+            if let thread = snapshot.threads.first(where: { $0.id == key }) {
                 return (snapshot, thread)
             }
         }

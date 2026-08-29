@@ -13,6 +13,9 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
    live WAL fails or reads empty — with a temp-copy fallback on open failure.
    `immutable=1` is only for genuinely static snapshots.
    If a store can't be read safely, degrade to running-state detection.
+   The temp-copy cache is ONE dir per source db, refreshed in place and
+   rate-limited for >64MB sources — a per-stamp dir scheme once piled up
+   gigabytes of a 187MB Hermes db and stalled first paint for a minute.
    Directory listings use path-based `contentsOfDirectory(atPath:)` + `stat`:
    the URL-enumerator variant can spin indefinitely on a directory that a
    live agent session is writing many times a second.
@@ -94,8 +97,12 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
   rules keep it sane: an accordion hover-open disarms until the cursor
   physically moves (rows shift under a stationary cursor and would cascade
   opens), and the recap card needs a 4-tick (~480ms) dwell.
-- TCC changes (granting Accessibility) only take full effect for the AX APIs
-  after the app relaunches — `AXIsProcessTrusted` may flip live while window
+- Replacing the signed binary can leave the AX grant half-alive:
+  `AXIsProcessTrusted()` still true while every `kAXWindowsAttribute` copy
+  fails. WindowLocator logs `windows-copy failed … err=` under HUBBY_DEBUG
+  for exactly this; a fresh `make sign` (or toggling the grant off/on)
+  restores it. Also: TCC changes (granting Accessibility) only take full
+  effect for the AX APIs after the app relaunches — `AXIsProcessTrusted` may flip live while window
   enumeration still fails. Also: a binary launched from a terminal shell
   inherits the terminal's AX grant via responsible-process attribution, so
   the ungranted flow can only be tested via a `launchctl`/Finder launch.
@@ -122,6 +129,22 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
   (clear-context / auto-mode / Ultraplan variants shift every index) — a
   blind sequence could select "bypass permissions", so plan approvals are
   never typed: the Approve pill exact-jumps to the dialog instead.
+- Terminal tabs are NOT separate AX windows everywhere: Ghostty is ONE
+  AXWindow (titled after the ACTIVE tab) holding an AXTabGroup of
+  AXRadioButtons — one per tab, titled "✳ <session slug>". Landing on a
+  thread means scoring the tab titles and AXPressing the winner, not just
+  raising the window. WindowLocator returns the best score; only
+  `score >= slugWeight` may be reported (or typed at) as an exact landing —
+  cwd/hint signals can pick a *plausible* window that is the wrong tab.
+- TextField editing works in this nonactivating panel (canBecomeKey is
+  true, Spotlight-style): clicking a priorities line focuses it without
+  activating the app. Don't "fix" the style mask or key behavior without
+  re-verifying that editing still works.
+- The swipe-away gesture is a LOCAL scroll-wheel NSEvent monitor installed
+  by ExpandedHub (onAppear/onDisappear): the hub's ScrollView is
+  vertical-only, so horizontal flicks over a thread row are free to claim.
+  It decides ownership on the gesture's first real movement and then owns
+  it through the momentum tail — the same discipline as the fan cycler.
 - Codex "Automation: …" threads re-run on a schedule and will flood any
   recency-capped list; dedupe by name and rank below interactive threads
   (CodexThreadMerge), and fetch deep (64 rows) so real threads survive.
