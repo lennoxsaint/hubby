@@ -236,23 +236,20 @@ private struct MorphChrome: ViewModifier, Animatable {
             .clipShape(shape)
             .background(shape.fill(HubbyGlass.base))
             .background(shape.fill(HubbyGlass.floor))
-            .overlay(shape.fill(HubbyGlass.sheen).allowsHitTesting(false))
-            // The edge stays deliberately soft (29 Aug): a whisper of a
-            // hairline and a diffused rim so the glass melts into the
-            // desktop instead of reading as an outlined shape.
+            // One flat blush sheet: no sheen, no rim glow — just a whisper
+            // of a hairline so the glass melts into the desktop instead of
+            // reading as an outlined shape.
             .overlay(
                 shape.strokeBorder(Color.black.opacity(0.045), lineWidth: 0.5)
                     .blur(radius: 0.4)
                     .allowsHitTesting(false))
-            .overlay(
-                shape.strokeBorder(HubbyGlass.rim, lineWidth: 1.2)
-                    .blur(radius: 1.8)
-                    .opacity(0.55)
-                    .allowsHitTesting(false))
             // Two shadows give the glass volume: a tight contact shadow
-            // seats it on the desktop, a wide ambient one lifts it off.
+            // seats it on the desktop, a soft ambient one lifts it off.
+            // The ambient envelope (radius + offset) must stay under
+            // `panelPadding`, or it hard-clips at the panel edge and reads
+            // as a faint square border on light desktops.
             .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-            .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
+            .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
     }
 }
 

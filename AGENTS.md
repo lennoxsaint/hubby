@@ -40,6 +40,20 @@ Hermes, Grok Bot) and jumps to them on click. A circle that expands into a hub.
 
 ## UI gotchas (learned the hard way)
 
+- `NSWindow.performDrag(with:)` from a plain mouse-DOWN enters an
+  event-tracking session with no mouse-up left to end it — the window
+  glues to the cursor and the app reads as frozen. Only call it from
+  `mouseDragged` after real movement. And never put an invisible drag
+  band over interactive content: the ring's top band sat on priority
+  row 1 and "clicking priority 1 froze the app". The top edge belongs
+  to the priorities; the ring is left/right/bottom only.
+- In global NSEvent monitors, NEVER trust `event.locationInWindow` for
+  windowless events — on multi-display setups it can be measured against
+  the wrong screen, making clicks INSIDE the hub read as outside (the
+  hub collapsed on in-hub clicks). Use `NSEvent.mouseLocation`.
+- Automation note: the panel SHIFTS on expand (`shiftToFitHub`) — never
+  reuse pre-expand window coordinates for post-expand clicks; re-read
+  the frame after the morph.
 - Tap + drag on ONE view in this panel: `.onTapGesture` next to
   `.gesture(DragGesture)` never fires — the tap loses arbitration. Use
   `.simultaneousGesture(TapGesture())` beside the drag (movement fails the

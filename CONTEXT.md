@@ -19,7 +19,7 @@
 - **Thread**: one conversation/session/agent inside an agent app.
 - **Swept thread**: a thread the user swiped left off the list. Hidden (persisted) until it shows new activity, which revives it for good; nothing on disk is touched.
 - **Shimmer**: the working indicator — a soft blush band sweeping the generating row's dot and title (Codex's exact motion: 2s Hann-window sweep, one app-wide phase). There is no rotating spinner.
-- **Unread**: a thread that finished while unobserved and has not been jumped to. Clears on jump or the recap card's mark-read.
+- **Unread**: a thread that finished while unobserved and has not been jumped to. Clears on jump or the recap card's mark-read. Carries NO dot, badge, ring, or label at rest — it surfaces in the recap card and drop-down ordering only. The hub's resting signals are exactly two: the shimmer (generating) and amber (needs you).
 - **Gutter**: the transparent region either side of the hub where the hover card floats — beside the rows, never over them.
 - **Verdict**: the recap card's first line — plain words answering "finished, still working, or waiting on you".
 - **Recap**: the "what just happened" under the verdict — the thread's last **assistant** utterance, cleaned to plain prose. Omitted when the source can't attribute a speaker (Cursor): no recap beats a wrong one.

@@ -496,26 +496,18 @@ private struct AppRow: View {
                     AppIconView(
                         info: snapshot.info,
                         size: 26,
-                        dimmed: !snapshot.isRunning && snapshot.threads.isEmpty,
-                        ring: RingCounts(snapshot: snapshot))
+                        dimmed: !snapshot.isRunning && snapshot.threads.isEmpty)
 
                     Text(snapshot.info.name)
                         .font(.system(.body, design: .rounded).weight(.medium))
 
-                    if snapshot.runningCount > 0 {
-                        Text("\(snapshot.runningCount) running")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(HubbyGlass.running)
-                    }
+                    // The one signal loud enough for a header: blocked on
+                    // the human. Everything else (running, unread) lives in
+                    // the drop-down — headers stay calm.
                     if snapshot.needsYouCount > 0 {
                         Text("\(snapshot.needsYouCount) need you")
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
                             .foregroundStyle(HubbyGlass.needsYou)
-                    }
-                    if snapshot.unreadCount > 0 {
-                        Text("\(snapshot.unreadCount) new")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(HubbyGlass.unread)
                     }
 
                     Spacer()
@@ -547,7 +539,7 @@ private struct AppRow: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.black.opacity(isOpen ? 0.045 : 0)))
+                .fill(.black.opacity(isOpen ? 0.03 : 0)))
     }
 
     private var dropDown: some View {

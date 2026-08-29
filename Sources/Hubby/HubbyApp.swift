@@ -244,6 +244,10 @@ final class PanelController: ObservableObject {
     /// whole animation; no window resize happens.
     func setExpanded(_ expanded: Bool) {
         guard panel != nil, expanded != isExpanded else { return }
+        if ProcessInfo.processInfo.environment["HUBBY_DEBUG"] != nil, !expanded {
+            let stack = Thread.callStackSymbols.prefix(9).joined(separator: "\n  ")
+            FileHandle.standardError.write(Data("collapse via:\n  \(stack)\n".utf8))
+        }
         if expanded {
             shiftToFitHub()
             // The pin survives into the hub (it decides which app is first);
@@ -454,9 +458,13 @@ final class PanelController: ObservableObject {
         if isExpanded {
             outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
                 matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-                // Windowless monitor events carry screen coordinates.
-                let location = event.window?.convertPoint(toScreen: event.locationInWindow)
-                    ?? event.locationInWindow
+                // NEVER use event.locationInWindow here: for windowless
+                // global-monitor events it can be measured against the
+                // wrong display (multi-monitor), making clicks INSIDE the
+                // hub read as outside — the hub collapsed on priority
+                // clicks. The live pointer is always in true screen coords.
+                _ = event
+                let location = NSEvent.mouseLocation
                 Task { @MainActor in
                     guard let self,
                           !self.screenContentRect().insetBy(dx: -4, dy: -4).contains(location),
@@ -464,6 +472,11 @@ final class PanelController: ObservableObject {
                               !$0.insetBy(dx: -4, dy: -4).contains(location)
                           }) ?? true
                     else { return }
+                    if ProcessInfo.processInfo.environment["HUBBY_DEBUG"] != nil {
+                        FileHandle.standardError.write(Data(
+                            ("outside-click collapse loc=\(location) " +
+                             "content=\(self.screenContentRect())\n").utf8))
+                    }
                     withAnimation(HubbyAnim.morph) { self.setExpanded(false) }
                 }
             }

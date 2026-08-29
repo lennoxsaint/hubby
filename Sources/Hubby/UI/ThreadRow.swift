@@ -25,26 +25,18 @@ struct ThreadRow: View {
         Button(action: onTap) {
             HStack(spacing: 8) {
                 statusDot
-                VStack(alignment: .leading, spacing: 1) {
-                    if thread.status(now: now) == .generating {
-                        ShimmerText(
-                            text: thread.title,
-                            font: .system(.callout, design: .rounded),
-                            cellOffset: 2,
-                            rowCells: rowCells)
-                    } else {
-                        Text(thread.title)
-                            .font(.system(.callout, design: .rounded))
-                            .lineLimit(1)
-                    }
-                    // A bare "~" (session parked in the home directory)
-                    // says nothing worth a line.
-                    if let subtitle = thread.subtitle, subtitle != "~" {
-                        Text(subtitle)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
+                // No subtitle line: project paths were most of the row
+                // noise, and the hover recap card carries full context.
+                if thread.status(now: now) == .generating {
+                    ShimmerText(
+                        text: thread.title,
+                        font: .system(.callout, design: .rounded),
+                        cellOffset: 2,
+                        rowCells: rowCells)
+                } else {
+                    Text(thread.title)
+                        .font(.system(.callout, design: .rounded))
+                        .lineLimit(1)
                 }
                 Spacer()
                 if let prompt = thread.pendingPrompt, let onPillTap {
@@ -53,6 +45,7 @@ struct ThreadRow: View {
                 Text(relativeTimeFormatter.localizedString(for: thread.lastActivity, relativeTo: now))
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(.tertiary)
+                    .opacity(0.7)
                 if let onPin, hovered || thread.isPinned {
                     Button(action: onPin) {
                         Image(systemName: thread.isPinned ? "pin.fill" : "pin")
@@ -83,6 +76,9 @@ struct ThreadRow: View {
         }
     }
 
+    /// A dot appears only when it matters: shimmer for generating, amber
+    /// for blocked. Every other state gets a clean left edge — the spacer
+    /// keeps titles aligned with the rows that do carry a dot.
     @ViewBuilder
     private var statusDot: some View {
         switch thread.status(now: now) {
@@ -90,13 +86,8 @@ struct ThreadRow: View {
             ShimmerDot(rowCells: rowCells)
         case .waitingOnYou:
             PulsingDot(color: HubbyGlass.needsYou)
-        case .finishedUnread:
-            // Blue owns "new result you haven't looked at".
-            Circle().fill(HubbyGlass.unread).frame(width: 7, height: 7)
-        case .active:
-            Circle().fill(.black.opacity(0.4)).frame(width: 6, height: 6)
-        case .idle:
-            Circle().fill(Color.secondary.opacity(0.4)).frame(width: 6, height: 6)
+        case .finishedUnread, .active, .idle:
+            Color.clear.frame(width: 7, height: 7)
         }
     }
 }

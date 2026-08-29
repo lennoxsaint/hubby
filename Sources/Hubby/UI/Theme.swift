@@ -18,8 +18,10 @@ enum HubbyMetrics {
     static let orbDiameter: CGFloat = 72
     static let hubWidth: CGFloat = 330
     /// The scrollable rows area is capped; the hub itself hugs its content.
-    static let maxRowsHeight: CGFloat = 520
-    /// Header + divider + capped rows; the panel is sized to always fit this.
+    /// Budgeted so priorities (~96) + capped rows + wordmark (~34) always
+    /// fit inside `maxHubHeight` — the rows scroll, nothing clips.
+    static let maxRowsHeight: CGFloat = 420
+    /// Priorities + capped rows + wordmark; the panel always fits this.
     static let maxHubHeight: CGFloat = 580
     static let cornerRadius: CGFloat = 24
     /// Must exceed the largest shadow radius + offset, or the soft shadow is
@@ -78,24 +80,6 @@ enum HubbyGlass {
     static let floor = Color.white.opacity(0.52)
     /// Inner 0.5pt glass edge — dark on light glass.
     static let hairline = Color.black.opacity(0.10)
-
-    /// The colored rim light: rose gold circling the edge, brightest top-left.
-    static let rim = AngularGradient(
-        gradient: Gradient(stops: [
-            .init(color: accent.opacity(0.80), location: 0),
-            .init(color: accent.opacity(0.15), location: 0.3),
-            .init(color: accent.opacity(0.40), location: 0.55),
-            .init(color: accent.opacity(0.15), location: 0.8),
-            .init(color: accent.opacity(0.80), location: 1),
-        ]),
-        center: .center,
-        angle: .degrees(-125))
-
-    /// Soft top-third light catch on the glass.
-    static let sheen = LinearGradient(
-        colors: [Color.white.opacity(0.45), Color.white.opacity(0)],
-        startPoint: .top,
-        endPoint: .center)
 
     /// The cursive wordmark at the hub's bottom centre ("running writing").
     static let wordmark = Font.custom("SnellRoundhand-Bold", size: 16)
