@@ -243,12 +243,11 @@ private struct MorphChrome: ViewModifier, Animatable {
                 shape.strokeBorder(Color.black.opacity(0.045), lineWidth: 0.5)
                     .blur(radius: 0.4)
                     .allowsHitTesting(false))
-            // Two shadows give the glass volume: a tight contact shadow
-            // seats it on the desktop, a soft ambient one lifts it off.
-            // The ambient envelope (radius + offset) must stay under
-            // `panelPadding`, or it hard-clips at the panel edge and reads
-            // as a faint square border on light desktops.
-            .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+            // Exactly ONE shadow, envelope (radius + offset) under
+            // `panelPadding`. Two stacked .shadow modifiers rendered a
+            // shadow OF the first shadow's soft-alpha rectangle — a faint
+            // square halo on light desktops (bisected on-screen 29 Aug).
+            // Exceeding the padding hard-clips into a square the same way.
             .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
     }
 }
